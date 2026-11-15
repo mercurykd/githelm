@@ -1,0 +1,18 @@
+.vscode/**
+.vscode-test/**
+.npm-cache/**
+src/**
+test/**
+build/**
+node_modules/**
+scripts/**
+docs/**
+# Readmes link to the screenshots by absolute URL, so the VSIX does not carry them.
+media/demo/**
+esbuild.mjs
+tsconfig*.json
+**/*.map
+.gitignore
+*.vsix
+.pack-tmp/**
+.github/**

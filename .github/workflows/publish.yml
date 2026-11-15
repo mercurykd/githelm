@@ -1,0 +1,38 @@
+name: publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Trusted publishing: GitHub mints an OIDC token that the VS Marketplace
+# exchanges for a short-lived credential. No PAT and no secret is stored.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # The test runner flags differ between Node versions, so the version that
+      # ran is worth seeing in the log.
+      - name: Node version
+        run: node --version
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Publish to the VS Code Marketplace
+        run: npx --yes @vscode/vsce@latest publish --oidc --skip-duplicate --no-dependencies

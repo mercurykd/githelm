@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.vscode-test/
+.npm-cache/
+*.vsix
+*.log
+.pack-tmp/
+.pack.ps1
+
+# Internal notes and publishing research stay out of the repository.
+docs/
