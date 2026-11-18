@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { TagEntry } from '../src/git/tags';
+import { narrowHintColumn } from '../src/views/columns';
 import { renderTags } from '../src/views/tagsRender';
 
 const TAGS: TagEntry[] = [
@@ -86,5 +87,33 @@ describe('renderTags', () => {
     const rendered = renderTags('/repo', TAGS);
     assert.ok(rendered.text.includes('g graph'), 'g opens the graph from here');
     assert.ok(rendered.text.includes('enter show commit'));
+  });
+
+  it('keeps the key column three lines tall and starts the list on the sixth line', () => {
+    const rendered = renderTags('/repo', TAGS);
+    const lines = rendered.text.split('\n');
+    // Header on line 1, hints on lines 2 to 4, a blank line, then the rows — the
+    // same line count the history screen gives its filter block.
+    for (const line of [2, 3, 4]) {
+      assert.ok(lines[line - 1].slice(narrowHintColumn()).trim().length > 0, `line ${line} carries hints: ${lines[line - 1]}`);
+    }
+    assert.equal(lines[4].trim(), '', 'the fifth line separates the hints from the list');
+    assert.deepEqual([...rendered.targets.keys()], [6, 7], 'the rows land on lines 6 and 7');
+  });
+
+  it('puts the message of an annotated tag after its name and keeps the commit subject', () => {
+    const rendered = renderTags('/repo', [
+      { ...TAGS[0], annotation: '0.2.0 release notes' },
+      TAGS[1],
+    ]);
+    const [annotated, lightweight] = rowLines(rendered.text);
+    assert.ok(annotated.includes('0.2.0 release notes'), annotated);
+    assert.ok(annotated.includes('Merge branch feature/graph'), 'the commit subject stays');
+    assert.ok(
+      annotated.indexOf('0.2.0 release notes') < annotated.indexOf('f0f0f0f'),
+      'the annotation follows the tag name, the sha column comes after it'
+    );
+    assert.ok(!lightweight.includes('0.2.0 release notes'), 'a lightweight tag shows no annotation');
+    assert.ok(lightweight.includes('Start the graph renderer'), lightweight);
   });
 });

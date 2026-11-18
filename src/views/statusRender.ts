@@ -82,13 +82,6 @@ export const SECTION_ORDER: StatusSection[] = ['conflict', 'staged', 'unstaged',
  */
 const COLUMN_GAP = 6;
 
-/**
- * Key hints per line in the global key list of the status screen. The list is
- * the longest of any screen, so it is packed four to a line — three lines — and
- * leaves the top right corner to the column, which starts beside `staged`.
- */
-const STATUS_KEYS_PER_LINE = 4;
-
 function sectionLabel(section: BufferSection): string {
   return t(`status.section.${section}` as MessageKey);
 }
@@ -336,7 +329,7 @@ export function renderStatus(
   // screen aligns its hints at the same place.
   const merged = mergeColumns(
     lines,
-    hintEntries(t('hints.global'), t('status.keysHeader'), STATUS_KEYS_PER_LINE)
+    hintEntries(t('hints.global'), t('status.keysHeader'))
   );
   for (const span of merged.spans) {
     spans.push(span);
@@ -525,7 +518,7 @@ function placeColumn(
   const titles: { line: number; section: BufferSection }[] = [];
   // The key hints own the top right corner of the screen: the column starts
   // below them, even when that is a line or two under the `staged` title.
-  const begin = Math.max(top, hintEntries(t('hints.global'), t('status.keysHeader'), STATUS_KEYS_PER_LINE).length);
+  const begin = Math.max(top, hintEntries(t('hints.global'), t('status.keysHeader')).length);
   for (const block of blocks) {
     // The blocks keep the blank line they end with, so the column reads like the
     // file side: one empty row between two blocks. The blank of the last block is
@@ -637,7 +630,7 @@ export function renderUninitialized(folderPath: string): RenderedStatus {
   addTarget(targets, cells, actionLine + 1, { kind: 'init', section: 'init' });
   lines.push('');
 
-  const merged = mergeColumns(lines, hintEntries(t('hints.global'), t('status.keysHeader'), STATUS_KEYS_PER_LINE));
+  const merged = mergeColumns(lines, hintEntries(t('hints.global'), t('status.keysHeader')));
   for (const span of merged.spans) {
     spans.push(span);
   }

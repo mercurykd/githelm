@@ -1,6 +1,6 @@
 import { t } from '../i18n';
 import { BranchEntry } from '../git/actions';
-import { hintEntries, mergeColumns } from './columns';
+import { hintEntries, mergeColumns, narrowHintColumn } from './columns';
 import { Span } from '../util/span';
 
 export interface RenderedBranches {
@@ -79,7 +79,7 @@ export function renderBranches(repoPath: string, entries: BranchEntry[], showRem
     }
   }
 
-  const merged = mergeColumns(lines, hintEntries(branchesKeys(), t('status.keysHeader')));
+  const merged = mergeColumns(lines, hintEntries(branchesKeys(), t('status.keysHeader')), narrowHintColumn());
   for (const span of merged.spans) {
     spans.push(span);
   }

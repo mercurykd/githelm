@@ -7,12 +7,19 @@ export interface TagEntry {
   date: string;
   author: string;
   subject: string;
+  /**
+   * Message of an annotated tag, first paragraph only. Absent for a lightweight
+   * tag, which has no message of its own.
+   */
+  annotation?: string;
 }
 
 interface TagRef {
   name: string;
   /** Commit the tag resolves to: `%(*objectname)` for annotated tags, `%(objectname)` otherwise. */
   commit: string;
+  /** Present only when the tag itself carries a message. */
+  annotation?: string;
 }
 
 interface CommitInfo {
@@ -29,7 +36,9 @@ const DATE_FORMAT = '%Y-%m-%d %H:%M';
 export async function listTags(repoPath: string): Promise<TagEntry[]> {
   const refs = await git(repoPath, [
     'for-each-ref',
-    '--format=%(refname:short)\t%(objectname)\t%(*objectname)',
+    // The message of the tag itself comes last: it can contain whitespace, and
+    // only the fields before it are read by position.
+    '--format=%(refname:short)\t%(objecttype)\t%(objectname)\t%(*objectname)\t%(contents:subject)',
     '--sort=-creatordate',
     'refs/tags',
   ]);
@@ -40,16 +49,23 @@ export async function listTags(repoPath: string): Promise<TagEntry[]> {
     .split('\n')
     .filter((line) => line.trim().length > 0)
     .map((line): TagRef => {
-      const [name, object, peeled] = line.split('\t');
-      return { name: name ?? line, commit: peeled ? peeled : object ?? '' };
+      const [name, type, object, peeled, ...message] = line.split('\t');
+      const annotation = message.join('\t').replace(/\s+/g, ' ').trim();
+      return {
+        name: name ?? line,
+        commit: peeled ? peeled : object ?? '',
+        // `objecttype` is `tag` only for an annotated tag; a lightweight one points
+        // straight at a commit and borrows that commit's message.
+        annotation: type === 'tag' && annotation ? annotation : undefined,
+      };
     });
   if (listed.length === 0) {
     return [];
   }
 
-  // The row is a commit row, so the commit is asked for directly: an annotated
-  // tag carries its own tagger and message, and those are not what the history
-  // screen would print for the same commit.
+  // The row describes the commit, so the commit is asked for directly: the sha,
+  // the date and the author come from it even when the tag carries a message of
+  // its own, which the row then shows in place of the commit subject.
   const wanted = [...new Set(listed.map((tag) => tag.commit))].filter(Boolean);
   const commits = new Map<string, CommitInfo>();
   if (wanted.length > 0) {
@@ -82,6 +98,7 @@ export async function listTags(repoPath: string): Promise<TagEntry[]> {
       date: commit?.date ?? '',
       author: commit?.author ?? '',
       subject: commit?.subject ?? '',
+      ...(tag.annotation ? { annotation: tag.annotation } : {}),
     };
   });
 }

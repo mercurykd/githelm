@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { BranchEntry } from '../src/git/actions';
+import { narrowHintColumn } from '../src/views/columns';
 import { renderBranches } from '../src/views/branchesRender';
 
 const BRANCHES: BranchEntry[] = [
@@ -59,5 +60,17 @@ describe('renderBranches', () => {
   it('reports counts in the header', () => {
     const rendered = renderBranches('/repo', BRANCHES, true);
     assert.ok(rendered.text.includes('2 local, 1 remote'));
+  });
+
+  it('packs its keys into the three lines every screen uses', () => {
+    const rendered = renderBranches('/repo', BRANCHES, false);
+    const column = narrowHintColumn();
+    const hints = rendered.text
+      .split('\n')
+      .map((line) => (line.length > column ? line.slice(column).trim() : ''))
+      .filter((text) => text.length > 0);
+    assert.equal(hints.length, 4, 'the header plus three lines of keys');
+    assert.equal(hints[0], 'keys');
+    assert.ok(hints[3].includes('q close'), `the last line closes the list: ${hints[3]}`);
   });
 });

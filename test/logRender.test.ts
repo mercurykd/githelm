@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { renderLog } from '../src/views/logRender';
 import { ParsedLog } from '../src/git/log';
+import { narrowHintColumn } from '../src/views/columns';
 
 /**
  * `renderLog` is the whole history screen as a string: the demo images and the
@@ -32,7 +33,8 @@ describe('history screen', () => {
     const { lines } = renderLog(parsed, options);
     assert.match(lines[0] ?? '', /^githelm — commit history/);
     assert.match(lines[1] ?? '', /1 commit/);
-    assert.ok((lines[2] ?? '').startsWith('## filters'), 'the filter header keeps its line');
+    assert.ok((lines[5] ?? '').startsWith('## filters'), 'the filter block starts below the three-line key column');
+    assert.equal((lines[2] ?? '').slice(0, narrowHintColumn()).trim(), '', 'the lines between the count and the filters stay empty');
   });
 
   it('puts every commit row below the filter block', () => {
@@ -50,8 +52,11 @@ describe('history screen', () => {
   });
 
   it('numbers the filter lines so a click knows which field it hit', () => {
-    const { fieldLines } = renderLog(parsed, options);
-    assert.equal(fieldLines.get(4), 'grep');
+    const { lines, fieldLines } = renderLog(parsed, options);
+    // The block starts on line 6, so the first field follows its header.
+    const header = lines.findIndex((line) => line.startsWith('## filters'));
+    assert.ok(header >= 0, 'the filter header is on screen');
+    assert.equal(fieldLines.get(header + 2), 'grep');
     assert.equal(fieldLines.size, 7);
   });
 

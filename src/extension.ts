@@ -1261,6 +1261,11 @@ export function activate(context: vscode.ExtensionContext): void {
    * the cursor when the cursor is on one of the last commits, and `t` in the
    * graph tags the commit the graph shows.
    */
+  /**
+   * Asks for a name, then for a message: git makes a tag annotated as soon as it
+   * has a message, and an annotated tag is what a release tag has to be — a
+   * lightweight one is what `git push --follow-tags` silently ignores.
+   */
   const createTagAt = async (repo: string, target?: { ref: string; shortSha: string }): Promise<void> => {
     const name = await vscode.window.showInputBox({
       prompt: target ? t('prompt.tagNameOn', { ref: target.shortSha }) : t('prompt.tagName'),
@@ -1269,7 +1274,16 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!name || !name.trim()) {
       return;
     }
-    await createTag(repo, name.trim(), undefined, target?.ref);
+    const message = await vscode.window.showInputBox({
+      prompt: t('prompt.tagMessage'),
+      ignoreFocusOut: true,
+    });
+    if (message === undefined) {
+      // Escape on the second prompt cancels the tag instead of quietly making a
+      // lightweight one the user did not ask for.
+      return;
+    }
+    await createTag(repo, name.trim(), message.trim() || undefined, target?.ref);
     notify(t('msg.tagCreated', { name: name.trim() }));
   };
 
@@ -2392,18 +2406,13 @@ export function activate(context: vscode.ExtensionContext): void {
       warn(t('msg.noRepo'));
       return;
     }
-    const name = await vscode.window.showInputBox({ prompt: t('prompt.tagName'), ignoreFocusOut: true });
-    if (!name || !name.trim()) {
-      return;
-    }
-    await createTag(repo, name.trim());
+    await createTagAt(repo);
     await statusBuffer.refreshAll();
     for (const document of vscode.workspace.textDocuments) {
       if (document.uri.scheme === SCHEME && document.uri.path.startsWith('/tags/')) {
         await tagsBuffer.refresh(document.uri, 0);
       }
     }
-    notify(t('msg.tagCreated', { name: name.trim() }));
   });
 
   register('githelm.tags.move', async () => {

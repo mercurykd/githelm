@@ -57,16 +57,21 @@ code --install-extension githelm-X.Y.Z.vsix --force
 如果想快速迭代，可以把工作副本链接进 VS Code，而不是每次重新打包：
 
 ```bat
-mklink /J "%USERPROFILE%\.vscode\extensions\local.githelm" "D:\path\to\githelm"
+mklink /J "%USERPROFILE%\.vscode\extensions\mercurykd.githelm" "D:\path\to\githelm"
 ```
 
 然后 `npm run build` → **Developer: Restart Extension Host**。
+
+文件夹名必须是 `<publisher>.<name>`，与清单一致：改名之前留下的 `local.githelm` 目录对 VS Code 来说是**第二个**扩展，两者会争抢同样的命令和 scheme。请删除它：`rmdir "%USERPROFILE%\.vscode\extensions\local.githelm"`。
 
 ## 快速开始
 
 `alt+g` 打开状态缓冲区。这是你唯一需要记住的快捷键：从它出发，`g` 打开历史，`b` 打开分支，`t` 打开标签，`S` 打开子模块，`F` 打开 pull request，`l` 打开操作日志，`h` 打开当前界面的按键帮助。
 
 ## 按键
+
+每个界面的 `keys` 列都是三行，并从标题下方开始：较长的按键列表会被压缩到这个高度，而不会把该列撑高。在列表界面（标签、分支、历史图）上它更靠近正文，短行之后不会留下大片空白；历史图同样为过滤块留出这些空间，因此过滤块也从第六行开始。
+
 
 ### 状态 —— `alt+g`
 
@@ -170,7 +175,7 @@ mklink /J "%USERPROFILE%\.vscode\extensions\local.githelm" "D:\path\to\githelm"
 | 按键 | 动作 |
 | --- | --- |
 | `Enter` | 显示标签指向的提交 |
-| `t` | 在 `HEAD` 上创建标签 —— 与状态界面和图中的按键一致 |
+| `t` | 在 `HEAD` 上创建标签；填写说明会创建附注标签 —— 与状态界面和图中的按键一致 |
 | `e` | 把标签移动到 `HEAD` |
 | `x` | 删除 |
 | `D` | 删除远程上的标签 —— 本地标签保留 |
@@ -180,7 +185,7 @@ mklink /J "%USERPROFILE%\.vscode\extensions\local.githelm" "D:\path\to\githelm"
 
 标签的更新永远不是快进，因此推送标签总是强制更新 —— 而这个强制是*带租约*的：`U` 先问远程该标签指向哪里，再把这个值作为期望值发过去。若期间别人移动过该标签，推送会被拒绝而不是覆盖。远程还没有的标签则完全不需要强制。
 
-每一行就是历史界面的提交行，只是图的位置换成了标签名：名称、短 sha、日期、作者、主题，列和颜色都相同。附注标签显示它指向的提交 —— 它自己的 tagger 和说明并不是历史缓冲区会为那个提交打印的内容。
+每一行就是历史界面的提交行，只是图的位置换成了标签名：名称、短 sha、日期、作者、主题，列和颜色都相同。附注标签在名称之后单独一列显示它自己的说明，提交主题仍保留在行尾。列表从第六行开始：标题下的三行用于按键提示，再有一行把它们与各行隔开。轻量标签没有说明，因此该列留空。
 
 ### 子模块 —— `S`
 
@@ -279,10 +284,22 @@ npm run typecheck    # tsc --noEmit
 npm test             # 构建扩展与测试树、校验清单、运行测试套件
 ```
 
-`npm test` 直接对真实的临时 git 仓库运行 **408 个测试**（403 通过，5 跳过）—— `git` 二进制从不被 mock。同一条命令还会运行 `npm run validate`：当某个按键或菜单项指向未知命令，或者缺少 `main`、图标、shim、`CHANGELOG.md`，或者某个 README 没有指向另外两份 README 的语言切换链接时，它会失败。
+`npm test` 直接对真实的临时 git 仓库运行 **415 个测试**（410 通过，5 跳过）—— `git` 二进制从不被 mock。同一条命令还会运行 `npm run validate`：当某个按键或菜单项指向未知命令，或者缺少 `main`、图标、shim、`CHANGELOG.md`，或者某个 README 没有指向另外两份 README 的语言切换链接时，它会失败。
 
 本 README 中的截图不是窗口截图：`scripts/make-screenshots.mjs` 向真实的 `renderStatus` 与 `renderLog` 索取文本和 span，`scripts/make-screenshots.py` 用 `contributes.colors` 的值和 `views/highlight.ts` 里的 span 映射把它们画出来。只有边框——标签条和光标——是手绘的，因此图片不可能展示缓冲区实际并不产生的布局或颜色。
 
+## 发布
+
+形如 `v*` 的标签会自动发布：workflow 运行测试、打包一个 VSIX，把这个文件发布到 [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=mercurykd.githelm) 和 [Open VSX](https://open-vsx.org/extension/mercurykd/githelm)，并附加到 GitHub 发布 —— 所有人拿到的都是同一份构建。
+
+```bash
+npm version patch -m "release %s"   # 版本、提交和标签
+git push --follow-tags              # 标签触发发布
+```
+
+标签也可以在编辑器里创建：标签界面的 `t` 会询问说明（正是它让标签成为附注标签），`U` 把它推送到远程。`package.json` 里的版本仍需手动提升 —— 这是 `npm version` 唯一替你做的事。
+
+Marketplace 使用 trusted publishing，不需要保存令牌。Open VSX 暂时用 `OVSX_PAT` 密钥发布 —— 直到在该处为本仓库注册 trusted publisher。
 ## 架构
 
 ```

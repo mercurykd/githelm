@@ -11,6 +11,16 @@ export function hintColumn(): number {
   return currentColumn;
 }
 
+/**
+ * Column for the list screens — tags, branches and the history graph. Their hint
+ * block only shares lines with the title, the count and the blank lines above the
+ * list, so it can sit right after the text instead of at the shared column: a bit
+ * over half of it, which keeps a wide window from leaving a long empty gutter.
+ */
+export function narrowHintColumn(): number {
+  return Math.max(40, Math.round(currentColumn * 0.55));
+}
+
 export interface ColumnEntry {
   text: string;
   kind: SpanKind;
@@ -24,10 +34,25 @@ export function keySegments(keysLine: string): string[] {
     .filter(Boolean);
 }
 
-/** Right-hand column with a header and the key hints, two per line. */
-export function hintEntries(keysLine: string, header: string, perLine = 2): ColumnEntry[] {
+/**
+ * Every screen's key column is three lines tall — the status screen's line count,
+ * which the other buffers follow so the hints read the same everywhere.
+ */
+const HINT_LINES = 3;
+
+/**
+ * Right-hand column with a header and the key hints. By default the hints are
+ * packed so the column is at most `HINT_LINES` lines tall — the status screen's
+ * line count, which the other buffers follow so the hints read the same
+ * everywhere — while a short list stays on one line.
+ */
+export function hintEntries(keysLine: string, header: string, lines?: number): ColumnEntry[] {
   const entry: ColumnEntry[] = [{ text: header, kind: 'section' }];
   const segments = keySegments(keysLine);
+  const perLine =
+    lines === undefined
+      ? Math.max(2, Math.ceil(segments.length / HINT_LINES))
+      : Math.max(1, Math.ceil(segments.length / Math.max(1, lines)));
   for (let index = 0; index < segments.length; index += perLine) {
     entry.push({ text: `  ${segments.slice(index, index + perLine).join('   ')}`, kind: 'help' });
   }

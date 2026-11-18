@@ -57,16 +57,21 @@ code --install-extension githelm-X.Y.Z.vsix --force
 For a fast edit loop, link the working copy into VS Code instead of repackaging:
 
 ```bat
-mklink /J "%USERPROFILE%\.vscode\extensions\local.githelm" "D:\path\to\githelm"
+mklink /J "%USERPROFILE%\.vscode\extensions\mercurykd.githelm" "D:\path\to\githelm"
 ```
 
 then `npm run build` → **Developer: Restart Extension Host**.
+
+The folder name has to be `<publisher>.<name>`, so it matches the manifest — an older `local.githelm` folder from before the publisher was renamed is a *second* extension for VS Code, and the two fight over the same commands and schemes. Remove it: `rmdir "%USERPROFILE%\.vscode\extensions\local.githelm"`.
 
 ## Quick start
 
 `alt+g` opens the status buffer. That is the only shortcut you have to remember: from it, `g` opens history, `b` branches, `t` tags, `S` submodules, `F` pull requests, `l` the action log, `h` the key help for the current screen.
 
 ## Keys
+
+The `keys` column of every screen is three lines tall and starts under the title: long hint lists are packed to fit that height instead of growing the column. The list screens — tags, branches and the history graph — keep it closer to the text, so short rows are not followed by a wide empty gutter; the history screen gives its filter block the same room, so it begins on the sixth line as well.
+
 
 ### Status — `alt+g`
 
@@ -170,7 +175,7 @@ The author column is shared with the history graph: its width is the longest log
 | Key | Action |
 | --- | --- |
 | `Enter` | show the tagged commit |
-| `t` | create a tag on `HEAD` — the same key as on the status screen and in the graph |
+| `t` | create a tag on `HEAD`; a message makes it annotated — the same key as on the status screen and in the graph |
 | `e` | move the tag to `HEAD` |
 | `x` | delete |
 | `D` | delete the tag on the remote — the local tag stays |
@@ -180,7 +185,7 @@ The author column is shared with the history graph: its width is the longest log
 
 A tag update is never a fast-forward, so pushing a tag is always a forced update — and the force is *leased*: `U` first asks the remote what the tag points at there and sends that value as the expected one, so a tag somebody else moved in the meantime is refused instead of overwritten. A tag the remote does not have yet is pushed without any force.
 
-A row is the commit row of the history screen with the tag name standing where the graph goes: name, short sha, date, author, subject, in the same columns and with the same colours. An annotated tag shows the commit it points at — its own tagger and message are not what the history buffer would print for that commit.
+A row is the commit row of the history screen with the tag name standing where the graph goes: name, short sha, date, author, subject, in the same columns and with the same colours. An annotated tag shows its own message in a column of its own right after the name, and the commit subject stays at the end of the row. The list starts on the sixth line: the key hints take the three lines under the title and one line separates them from the rows. A lightweight tag has no message, so that column stays empty.
 
 ### Submodules — `S`
 
@@ -281,10 +286,22 @@ npm run typecheck    # tsc --noEmit
 npm test             # build the extension and the test tree, validate the manifest, run the suite
 ```
 
-`npm test` runs **408 tests** (403 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
+`npm test` runs **415 tests** (410 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
 
 The screenshots in this README are not captures of a window: `scripts/make-screenshots.mjs` asks the real `renderStatus` and `renderLog` for the text and the spans, and `scripts/make-screenshots.py` paints them with the values from `contributes.colors` and the span map in `views/highlight.ts`. Only the frame — the tab strip and the caret — is drawn by hand, so an image cannot show a layout or a colour the buffers do not actually produce.
 
+## Releases
+
+A tag matching `v*` publishes the extension automatically: the workflow runs the tests, packages one VSIX, publishes that file to the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=mercurykd.githelm) and to [Open VSX](https://open-vsx.org/extension/mercurykd/githelm), and attaches it to a GitHub release — so the same build is what everyone downloads.
+
+```bash
+npm version patch -m "release %s"   # version, commit and tag
+git push --follow-tags              # the tag publishes it
+```
+
+The tag can be made from the editor as well: `t` on the tags screen asks for a message — that is what makes the tag annotated — and `U` sends it to the remote. The version in `package.json` still has to be bumped by hand, which is the one thing `npm version` does for you.
+
+The Marketplace publish uses trusted publishing, so no token is stored. Open VSX publishes with the `OVSX_PAT` secret until a trusted publisher is registered for this repository there.
 ## Architecture
 
 ```

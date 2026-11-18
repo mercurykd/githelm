@@ -2,7 +2,7 @@ import { LogCommit, LogFilter, logRows, LogSort, ParsedLog } from '../git/log';
 import { repoDisplayName } from '../git/repo';
 import { t } from '../i18n';
 import { Span } from '../util/span';
-import { hintEntries, mergeColumns } from './columns';
+import { hintEntries, mergeColumns, narrowHintColumn } from './columns';
 
 /**
  * Everything the history buffer shows, as plain text and spans.
@@ -67,9 +67,16 @@ export function renderLog(parsed: ParsedLog, options: LogRenderOptions): Rendere
   lines.push(summary);
   spans.push({ line: 1, start: 0, end: summary.length, kind: 'meta' });
 
+  // The key column is three lines tall and starts under the title, so the filters
+  // wait for line 6 instead of running into the hints.
+  while (lines.length < 5) {
+    lines.push('');
+  }
+
   const filterHeader = `## ${t('log.section.filters')}`;
+  const filterHeaderLine = lines.length + 1;
   lines.push(filterHeader);
-  spans.push({ line: 2, start: 0, end: filterHeader.length, kind: 'section' });
+  spans.push({ line: filterHeaderLine - 1, start: 0, end: filterHeader.length, kind: 'section' });
 
   const width = Math.max(...FILTER_FIELDS.map((field) => fieldLabel(field).length)) + 3;
   for (const field of FILTER_FIELDS) {
@@ -98,7 +105,7 @@ export function renderLog(parsed: ParsedLog, options: LogRenderOptions): Rendere
     lines.push(row.text);
   }
 
-  const merged = mergeColumns(lines, hintEntries(logKeys(), t('status.keysHeader')));
+  const merged = mergeColumns(lines, hintEntries(logKeys(), t('status.keysHeader')), narrowHintColumn());
   for (const span of merged.spans) {
     spans.push(span);
   }
