@@ -5,7 +5,7 @@ All notable changes to **Git Helm** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.0.4] — 2026-11-19
 
 ### Added
 
@@ -14,6 +14,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - The `keys` column of the status screen sits a little left of the shared column: with two more keys the hints ran past the right edge of a normal window.
+
+### Fixed
+
+- The tag commands no longer appear in the Command Palette, where the extension keeps nothing but its three entry points.
 
 ## [0.0.3] — 2026-11-19
 

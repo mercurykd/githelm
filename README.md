@@ -288,7 +288,7 @@ npm run typecheck    # tsc --noEmit
 npm test             # build the extension and the test tree, validate the manifest, run the suite
 ```
 
-`npm test` runs **420 tests** (415 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
+`npm test` runs **422 tests** (417 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
 
 The screenshots in this README are not captures of a window: `scripts/make-screenshots.mjs` asks the real `renderStatus` and `renderLog` for the text and the spans, and `scripts/make-screenshots.py` paints them with the values from `contributes.colors` and the span map in `views/highlight.ts`. Only the frame — the tab strip and the caret — is drawn by hand, so an image cannot show a layout or a colour the buffers do not actually produce.
 

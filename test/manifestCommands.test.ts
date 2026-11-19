@@ -33,6 +33,24 @@ describe('manifest and command handlers', () => {
     assert.deepEqual(unknown, []);
   });
 
+  it('lists only declared commands in the palette menu', () => {
+    const unknown = (pkg.contributes?.menus?.commandPalette ?? [])
+      .map((entry: { command: string }) => entry.command)
+      .filter((id: string) => !declared.includes(id));
+    assert.deepEqual(unknown, []);
+  });
+
+  it('keeps the palette down to the way in, the file menu and the language', () => {
+    const hidden = new Set(
+      (pkg.contributes?.menus?.commandPalette ?? [])
+        .filter((entry: { when?: string }) => entry.when === 'false')
+        .map((entry: { command: string }) => entry.command)
+    );
+    // Screens are reached with keys and a cursor, so only these three stay searchable.
+    const visible = declared.filter((id) => !hidden.has(id)).sort();
+    assert.deepEqual(visible, ['githelm.file.actions', 'githelm.language', 'githelm.status.open']);
+  });
+
   it('routes each githelm view to its own key bindings', () => {
     const views = new Set(
       (pkg.contributes?.keybindings ?? [])
