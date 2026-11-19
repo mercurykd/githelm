@@ -21,6 +21,15 @@ export function narrowHintColumn(): number {
   return Math.max(40, Math.round(currentColumn * 0.55));
 }
 
+/**
+ * Column for the status screen. Its key list is the longest one in the extension,
+ * so it sits a little left of the shared column — enough for the hints to stay on
+ * screen, while the block titles and the file keys on the left keep their room.
+ */
+export function statusHintColumn(): number {
+  return Math.round(currentColumn * 0.85);
+}
+
 export interface ColumnEntry {
   text: string;
   kind: SpanKind;

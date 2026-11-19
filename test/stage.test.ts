@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import { diffArgs, parseDiff } from '../src/git/diff';
 import { git } from '../src/git/exec';
 import { buildPatch } from '../src/git/patch';
-import { addIntentToAdd, applyPatchToIndex, stageFile, stageFiles, unstageFile, unstageFiles } from '../src/git/stage';
+import { addIntentToAdd, applyPatchToIndex, stageAll, stageFile, stageFiles, unstageAll, unstageFile, unstageFiles } from '../src/git/stage';
 import { createTempRepo, TempRepo } from './helpers/tempRepo';
 
 let repo: TempRepo | undefined;
@@ -186,5 +188,47 @@ describe('stash quick peek', () => {
     } finally {
       repo.dispose();
     }
+  });
+});
+
+describe('stage all and unstage all', () => {
+  it('stages every change, deletions included, and takes them all back', async () => {
+    repo = createTempRepo({
+      commits: [{ 'keep.txt': 'keep\n', 'change.txt': 'old\n', 'gone.txt': 'bye\n' }],
+    });
+    const repoPath = repo.dir;
+    repo.write('change.txt', 'new\n');
+    repo.write('added.txt', 'fresh\n');
+    fs.rmSync(path.join(repoPath, 'gone.txt'));
+
+    await stageAll(repoPath);
+    const staged = repo.git('diff', '--cached', '--name-status').trim().split('\n').sort();
+    assert.deepEqual(staged, ['A\tadded.txt', 'D\tgone.txt', 'M\tchange.txt']);
+
+    await unstageAll(repoPath);
+    assert.equal(repo.git('diff', '--cached', '--name-status').trim(), '', 'the index is back at HEAD');
+    assert.equal(repo.read('change.txt'), 'new\n', 'the working tree keeps its edit');
+    assert.ok(fs.existsSync(path.join(repoPath, 'added.txt')), 'and keeps the new file');
+    assert.ok(!fs.existsSync(path.join(repoPath, 'gone.txt')), 'and keeps the deletion');
+  });
+
+  it('works in a repository that has no commit yet', async () => {
+    // There is no HEAD to reset to, so the index has to be emptied directly.
+    repo = createTempRepo();
+    const repoPath = repo.dir;
+    repo.write('a.txt', 'one\n');
+    repo.write('b.txt', 'two\n');
+
+    await stageAll(repoPath);
+    assert.deepEqual(
+      repo.git('diff', '--cached', '--name-only').trim().split('\n').sort(),
+      ['a.txt', 'b.txt'],
+      'both files went in'
+    );
+
+    await unstageAll(repoPath);
+    assert.equal(repo.git('diff', '--cached', '--name-only').trim(), '', 'nothing is left in the index');
+    assert.deepEqual(repo.git('status', '--porcelain').trim().split('\n').sort(), ['?? a.txt', '?? b.txt']);
+    assert.equal(repo.read('a.txt'), 'one\n', 'the files themselves are untouched');
   });
 });

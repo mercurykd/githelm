@@ -69,6 +69,31 @@ export async function unstageFile(repoPath: string, filePath: string): Promise<v
   await unstageFiles(repoPath, [filePath]);
 }
 
+/** `git add -A`: every change in the work tree, deletions included. */
+export async function stageAll(repoPath: string): Promise<void> {
+  const result = await git(repoPath, ['add', '-A']);
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || `git add -A failed (${result.code})`);
+  }
+}
+
+/**
+ * The way back: nothing stays in the index, the work tree keeps its files. A
+ * repository without a commit has no `HEAD` to reset to, so its index is emptied
+ * directly — the same fallback `unstageFiles` uses for a single path.
+ */
+export async function unstageAll(repoPath: string): Promise<void> {
+  const head = await git(repoPath, ['rev-parse', '--verify', '--quiet', 'HEAD']);
+  const args =
+    head.code === 0
+      ? ['reset', '--quiet', 'HEAD']
+      : ['rm', '--cached', '--quiet', '--ignore-unmatch', '-r', '--', '.'];
+  const result = await git(repoPath, args);
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || `git ${args[0]} failed (${result.code})`);
+  }
+}
+
 export async function unstageFiles(repoPath: string, paths: string[]): Promise<void> {
   if (paths.length === 0) {
     return;

@@ -70,7 +70,7 @@ mklink /J "%USERPROFILE%\.vscode\extensions\mercurykd.githelm" "D:\path\to\githe
 
 ## 按键
 
-每个界面的 `keys` 列都是三行，并从标题下方开始：较长的按键列表会被压缩到这个高度，而不会把该列撑高。在列表界面（标签、分支、历史图）上它更靠近正文，短行之后不会留下大片空白；历史图同样为过滤块留出这些空间，因此过滤块也从第六行开始。
+每个界面的 `keys` 列都是三行，并从标题下方开始：较长的按键列表会被压缩到这个高度，而不会把该列撑高。按键列表最长的状态界面上它稍微左移，列表界面（标签、分支、历史图）上则更靠近正文：提示不会跑出屏幕，短行之后也不会留下大片空白；历史图同样为过滤块留出这些空间，因此过滤块也从第六行开始。
 
 
 ### 状态 —— `alt+g`
@@ -79,6 +79,8 @@ mklink /J "%USERPROFILE%\.vscode\extensions\mercurykd.githelm" "D:\path\to\githe
 | --- | --- |
 | `s` | 暂存：光标处的文件 · 光标在标题上时整个区块 · 选中范围内的所有文件 |
 | `u` | 取消暂存 —— 同样三种模式 |
+| `alt+s` | 全部暂存：整个仓库，包括删除 |
+| `alt+u` | 全部取消暂存：把索引里的所有内容移出 |
 | `d` | 光标处文件的 diff — 在分区标题上则取整个分区，每个额外光标再加一个文件 |
 | `D` | 放弃光标处的那一行，按层处理（光标规则与 `d` 相同，且会先确认）：**已暂存**行把索引恢复到 HEAD，**未暂存**行从索引恢复工作区，**新文件**从磁盘删除，**冲突**采用 HEAD 版本。同一文件可能同时出现在多个分区 —— 每行各自独立处理 |
 | `i` | 加入 `.gitignore`：光标处的文件 · 选中的文件 · 光标在标题上时整个区块（已跟踪的文件只会被报告出来 —— 它们需要 `git rm --cached`） |
@@ -284,7 +286,7 @@ npm run typecheck    # tsc --noEmit
 npm test             # 构建扩展与测试树、校验清单、运行测试套件
 ```
 
-`npm test` 直接对真实的临时 git 仓库运行 **418 个测试**（413 通过，5 跳过）—— `git` 二进制从不被 mock。同一条命令还会运行 `npm run validate`：当某个按键或菜单项指向未知命令，或者缺少 `main`、图标、shim、`CHANGELOG.md`，或者某个 README 没有指向另外两份 README 的语言切换链接时，它会失败。
+`npm test` 直接对真实的临时 git 仓库运行 **420 个测试**（415 通过，5 跳过）—— `git` 二进制从不被 mock。同一条命令还会运行 `npm run validate`：当某个按键或菜单项指向未知命令，或者缺少 `main`、图标、shim、`CHANGELOG.md`，或者某个 README 没有指向另外两份 README 的语言切换链接时，它会失败。
 
 本 README 中的截图不是窗口截图：`scripts/make-screenshots.mjs` 向真实的 `renderStatus` 与 `renderLog` 索取文本和 span，`scripts/make-screenshots.py` 用 `contributes.colors` 的值和 `views/highlight.ts` 里的 span 映射把它们画出来。只有边框——标签条和光标——是手绘的，因此图片不可能展示缓冲区实际并不产生的布局或颜色。
 

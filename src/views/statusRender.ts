@@ -7,7 +7,7 @@ import type { LfsFile } from '../git/lfs';
 import type { Submodule } from '../git/submodules';
 import { samePath, WorktreeEntry } from '../git/worktree';
 import { Span } from '../util/span';
-import { hintColumn, hintEntries, keySegments, mergeColumns } from './columns';
+import { hintColumn, hintEntries, keySegments, mergeColumns, statusHintColumn } from './columns';
 
 export type BufferSection = StatusSection | 'stash' | 'remotes' | 'worktrees' | 'init';
 
@@ -325,11 +325,14 @@ export function renderStatus(
     lines.push('');
   }
 
-  // The column comes from `githelm.ui.hintColumn` (see columns.ts), so every
-  // screen aligns its hints at the same place.
+  // The column comes from `columns.ts`, so every screen aligns its hints at the
+  // same place. The status list of keys is the longest one in the extension, so it
+  // sits a little left of the shared column — otherwise the tail of the hints falls
+  // off a normal window.
   const merged = mergeColumns(
     lines,
-    hintEntries(t('hints.global'), t('status.keysHeader'))
+    hintEntries(t('hints.global'), t('status.keysHeader')),
+    statusHintColumn()
   );
   for (const span of merged.spans) {
     spans.push(span);
@@ -350,7 +353,11 @@ function pushHint(lines: string[], spans: Span[], text: string): void {
   spans.push({ line: lines.length - 1, start: 2, end: rule.length, kind: 'rule' });
 }
 
-/** The hairline stops before the hint column, so merging never clips it. */
+/**
+ * The hairline stops before the shared column, so it never runs into a right-hand
+ * block. It follows the hint text, not the key column: the inline hints sit far
+ * below the keys, and cutting the rule short of its own text looks broken.
+ */
 function ruleWidth(hintLength: number): number {
   return Math.max(1, Math.min(hintLength, hintColumn() - 2));
 }
@@ -630,7 +637,11 @@ export function renderUninitialized(folderPath: string): RenderedStatus {
   addTarget(targets, cells, actionLine + 1, { kind: 'init', section: 'init' });
   lines.push('');
 
-  const merged = mergeColumns(lines, hintEntries(t('hints.global'), t('status.keysHeader')));
+  const merged = mergeColumns(
+    lines,
+    hintEntries(t('hints.global'), t('status.keysHeader')),
+    statusHintColumn()
+  );
   for (const span of merged.spans) {
     spans.push(span);
   }

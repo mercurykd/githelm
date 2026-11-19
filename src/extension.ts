@@ -29,7 +29,7 @@ import {
 import type { ResetMode } from './git/ops';
 import { findRepoRoot, initRepository } from './git/repo';
 import { amendCommit, createFixupCommit, hasStagedChanges, headMessage, parentOf } from './git/rewrite';
-import { addIntentToAdd, PatchApplyError, stageFiles, unstageFiles } from './git/stage';
+import { addIntentToAdd, PatchApplyError, stageAll, stageFiles, unstageAll, unstageFiles } from './git/stage';
 import { applyStash, dropStash, planStash, popStash, pushStash, showStash, stashFileDiff, StashOptions } from './git/stash';
 import { entriesOf, readStatus } from './git/status';
 import { createTag, deleteRemoteTag, deleteTag, moveTag, pushTag, remoteTag } from './git/tags';
@@ -613,6 +613,56 @@ export function activate(context: vscode.ExtensionContext): void {
     await unstageFiles(state.repoPath, paths);
     await statusBuffer.refresh(editor.document.uri, editor.selection.active.line);
     notify(t('msg.unstagedCount', { count: paths.length }));
+  });
+
+  // `alt+s` and `alt+u` are the same two operations for the whole screen, without
+  // caring where the cursor is: the pair `s`/`u` next to them stays per file.
+  register('githelm.status.stageAll', async () => {
+    const editor = statusEditor();
+    if (!editor) {
+      return;
+    }
+    const state = statusBuffer.stateFor(editor.document.uri);
+    if (!state) {
+      return;
+    }
+    const pending = state.status.entries.filter((entry) => entry.section !== 'staged');
+    if (pending.length === 0) {
+      notify(t('msg.alreadyStaged'));
+      return;
+    }
+    if (pending.some((entry) => entry.section === 'conflict')) {
+      const confirmed = await vscode.window.showWarningMessage(
+        t('msg.conflictStage'),
+        { modal: true },
+        t('action.stage')
+      );
+      if (confirmed !== t('action.stage')) {
+        return;
+      }
+    }
+    await stageAll(state.repoPath);
+    await statusBuffer.refresh(editor.document.uri, editor.selection.active.line);
+    notify(t('msg.stagedCount', { count: pending.length }));
+  });
+
+  register('githelm.status.unstageAll', async () => {
+    const editor = statusEditor();
+    if (!editor) {
+      return;
+    }
+    const state = statusBuffer.stateFor(editor.document.uri);
+    if (!state) {
+      return;
+    }
+    const staged = entriesOf(state.status, 'staged');
+    if (staged.length === 0) {
+      notify(t('msg.nothingToUnstage'));
+      return;
+    }
+    await unstageAll(state.repoPath);
+    await statusBuffer.refresh(editor.document.uri, editor.selection.active.line);
+    notify(t('msg.unstagedCount', { count: staged.length }));
   });
 
   register('githelm.status.ignore', async () => {

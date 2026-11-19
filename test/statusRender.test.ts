@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { t } from '../src/i18n';
 import { RepoStatus } from '../src/git/status';
 import { WorktreeEntry } from '../src/git/worktree';
 import { RenderedStatus, renderStatus, renderUninitialized, resolveSelections, resolveTargets, StatusExtras, StatusTarget, targetAtCell } from '../src/views/statusRender';
@@ -736,17 +737,21 @@ describe('status layout', () => {
     commits: [{ shortSha: 'abc1234', date: '2026-11-14 20:11', author: 'me', subject: 'first' }],
   };
 
-  it('packs the global keys four to a line, three lines in all', () => {
+  it('packs the global keys into three lines without losing one', () => {
     const lines = renderStatus('/repo', STATUS, layoutExtras).text.split('\n');
     const column = lines[0].indexOf('keys');
     assert.ok(column > 0, 'the key column has its header on the first line');
-    assert.ok(
-      lines[1].includes('c commit') && lines[1].includes('m amend') && lines[1].includes('R reset') && lines[1].includes('b branches'),
-      'four keys on the first hint line'
-    );
-    assert.ok(lines[2].includes('t tag') && lines[2].includes('T tags') && lines[2].includes('S submodules') && lines[2].includes('F pulls'));
-    assert.ok(lines[3].includes('l actions') && lines[3].includes('h help') && lines[3].includes('r refresh') && lines[3].includes('q close'));
-    assert.equal(lines[4].includes('c commit'), false, 'and nothing after the third line');
+
+    // The packing follows the list: three lines tall, the keys spread evenly.
+    const keys = t('hints.global').split(/\s{3,}/);
+    const perLine = Math.max(2, Math.ceil(keys.length / 3));
+    const packed = [1, 2, 3].map((line) => lines[line].slice(column).trim());
+    packed.forEach((hint, index) => {
+      const shown = hint.length > 0 ? hint.split(/\s{3,}/) : [];
+      assert.equal(shown.length, Math.min(perLine, keys.length - index * perLine), `line ${index + 1} holds its share`);
+    });
+    assert.deepEqual(packed.join('   ').split(/\s{3,}/), keys, 'every key of the hint line is on screen, in order');
+    assert.equal(lines[4].slice(column).includes(keys[0]), false, 'and nothing after the third line');
   });
 
   it('leaves one blank row between the blocks of the column, as on the file side', () => {

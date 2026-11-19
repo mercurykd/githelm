@@ -70,7 +70,7 @@ The folder name has to be `<publisher>.<name>`, so it matches the manifest — a
 
 ## Keys
 
-The `keys` column of every screen is three lines tall and starts under the title: long hint lists are packed to fit that height instead of growing the column. The list screens — tags, branches and the history graph — keep it closer to the text, so short rows are not followed by a wide empty gutter; the history screen gives its filter block the same room, so it begins on the sixth line as well.
+The `keys` column of every screen is three lines tall and starts under the title: long hint lists are packed to fit that height instead of growing the column. The screen with the longest key list, the status screen, keeps it a little to the left of that column, and the list screens — tags, branches and the history graph — keep it closer still, so the hints stay on screen and short rows are not followed by a wide empty gutter; the history screen gives its filter block the same room, so it begins on the sixth line as well.
 
 
 ### Status — `alt+g`
@@ -79,6 +79,8 @@ The `keys` column of every screen is three lines tall and starts under the title
 | --- | --- |
 | `s` | stage: the file under the cursor · the whole section when the cursor is on a header · every file in the selection |
 | `u` | unstage — the same three modes |
+| `alt+s` | stage everything: the whole repository, deletions included |
+| `alt+u` | unstage everything that is in the index |
 | `d` | diff of the file under the cursor — a section header diffs the whole section, and every extra cursor adds its file |
 | `D` | discard the row under the cursor, one layer at a time (same cursor rules as `d`, and it asks first): a **staged** row puts the index back to HEAD, an **unstaged** row restores the working tree from the index, a **new** file is deleted from disk, a **conflict** keeps the HEAD version. The same file can sit in several sections at once — each row is discarded on its own |
 | `i` | add to `.gitignore`: file under the cursor · selected files · whole section on a header (tracked files are reported instead of written — they need `git rm --cached`) |
@@ -286,7 +288,7 @@ npm run typecheck    # tsc --noEmit
 npm test             # build the extension and the test tree, validate the manifest, run the suite
 ```
 
-`npm test` runs **418 tests** (413 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
+`npm test` runs **420 tests** (415 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
 
 The screenshots in this README are not captures of a window: `scripts/make-screenshots.mjs` asks the real `renderStatus` and `renderLog` for the text and the spans, and `scripts/make-screenshots.py` paints them with the values from `contributes.colors` and the span map in `views/highlight.ts`. Only the frame — the tab strip and the caret — is drawn by hand, so an image cannot show a layout or a colour the buffers do not actually produce.
 

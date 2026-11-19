@@ -303,6 +303,14 @@
         "title": "Git Helm: Unstage"
       },
       {
+        "command": "githelm.status.stageAll",
+        "title": "Git Helm: Stage All"
+      },
+      {
+        "command": "githelm.status.unstageAll",
+        "title": "Git Helm: Unstage All"
+      },
+      {
         "command": "githelm.status.diff",
         "title": "Git Helm: File Diff"
       },
@@ -636,6 +644,16 @@
       {
         "command": "githelm.status.unstage",
         "key": "u",
+        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
+      },
+      {
+        "command": "githelm.status.stageAll",
+        "key": "alt+s",
+        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
+      },
+      {
+        "command": "githelm.status.unstageAll",
+        "key": "alt+u",
         "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
       },
       {
@@ -1067,6 +1085,14 @@
           "when": "false"
         },
         {
+          "command": "githelm.status.stageAll",
+          "when": "false"
+        },
+        {
+          "command": "githelm.status.unstageAll",
+          "when": "false"
+        },
+        {
           "command": "githelm.status.diff",
           "when": "false"
         },
@@ -1385,6 +1411,16 @@
           "command": "githelm.status.unstage",
           "when": "resourceScheme == 'githelm' && githelm.view == 'status'",
           "group": "githelm@2"
+        },
+        {
+          "command": "githelm.status.stageAll",
+          "when": "resourceScheme == 'githelm' && githelm.view == 'status'",
+          "group": "githelm@2.1"
+        },
+        {
+          "command": "githelm.status.unstageAll",
+          "when": "resourceScheme == 'githelm' && githelm.view == 'status'",
+          "group": "githelm@2.2"
         },
         {
           "command": "githelm.status.commit",
