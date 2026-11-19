@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { BranchEntry } from '../src/git/actions';
+import { t } from '../src/i18n';
 import { narrowHintColumn } from '../src/views/columns';
 import { renderBranches } from '../src/views/branchesRender';
 
@@ -60,6 +61,20 @@ describe('renderBranches', () => {
   it('reports counts in the header', () => {
     const rendered = renderBranches('/repo', BRANCHES, true);
     assert.ok(rendered.text.includes('2 local, 1 remote'));
+  });
+
+  it('shows the branch git points at even when it has no commit yet', () => {
+    // A fresh `git init` has an unborn HEAD: `refs/heads` is empty, but the branch
+    // name exists in `.git/HEAD`, so the screen is not empty for no reason.
+    const rendered = renderBranches(
+      '/repo',
+      [{ name: 'master', current: true, upstream: '', ahead: 0, behind: 0, subject: '', isRemote: false, unborn: true }],
+      false
+    );
+    assert.ok(rendered.text.includes('* master'), rendered.text);
+    assert.ok(rendered.text.includes(t('branches.unborn')), 'the row explains why it has no commits');
+    assert.ok(!rendered.text.includes(t('branches.noUpstream')), 'an unborn branch reports no upstream');
+    assert.equal(rendered.targets.size, 1, 'the row is still addressable');
   });
 
   it('packs its keys into the three lines every screen uses', () => {

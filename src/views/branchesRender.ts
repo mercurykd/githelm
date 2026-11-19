@@ -56,9 +56,10 @@ export function renderBranches(repoPath: string, entries: BranchEntry[], showRem
       if (tracking) {
         spans.push({ line: lineNumber - 1, start: text.length - tracking.length, end: text.length, kind: 'hunk' });
       }
-      if (entry.subject) {
-        lines.push(`    ${entry.subject}`);
-        spans.push({ line: lines.length - 1, start: 4, end: 4 + entry.subject.length, kind: 'meta' });
+      if (entry.subject || entry.unborn) {
+        const subject = entry.unborn ? t('branches.unborn') : entry.subject;
+        lines.push(`    ${subject}`);
+        spans.push({ line: lines.length - 1, start: 4, end: 4 + subject.length, kind: 'meta' });
       }
     }
     lines.push('');
@@ -89,6 +90,10 @@ export function renderBranches(repoPath: string, entries: BranchEntry[], showRem
 
 function trackingLabel(entry: BranchEntry): string {
   if (entry.isRemote) {
+    return '';
+  }
+  if (entry.unborn) {
+    // A branch HEAD points at, with no commit behind it: nothing tracks it yet.
     return '';
   }
   if (!entry.upstream) {

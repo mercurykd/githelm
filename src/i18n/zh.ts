@@ -77,6 +77,7 @@ export const zh: Record<MessageKey, string> = {
   'branches.upstreamDiverged': '→ {ref}  +{ahead} −{behind}',
   'branches.upstreamGone': '→ {ref}  （已删除）',
   'branches.noUpstream': '（无 upstream）',
+  'branches.unborn': '尚无提交',
   'branches.keys':
     'n 创建   c 切换   e 重命名   u upstream   x 删除   m 合并   D 删除远程分支   S reset   R 远程分支   g 图形   T 标签页   r 刷新   h 帮助   q 关闭',
 
@@ -207,6 +208,8 @@ export const zh: Record<MessageKey, string> = {
   'msg.notTags': 'Git Helm：当前缓冲区不是标签页。',
   'msg.notFile': 'Git Helm：请从工作区打开文件。',
   'msg.cursorNotFile': '光标不在文件或分区标题上。',
+  'msg.refreshed': '状态已刷新。',
+  'msg.emptySection': '该分区没有文件。',
   'msg.cursorNotCommit': '光标不在提交上。',
   'msg.cursorNotBranch': '光标不在分支上。',
   'msg.cursorNotTag': '光标不在标签上。',

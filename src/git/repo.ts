@@ -35,3 +35,19 @@ export function repoDisplayName(repoPath: string): string {
   const parts = repoPath.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? repoPath;
 }
+
+/**
+ * One spelling for one path. Windows hands us `D:\work\repo` (VS Code's `fsPath`)
+ * while git prints `D:/work/repo` (`rev-parse --show-toplevel`), and a buffer URI
+ * built from one form does not match the other — the editor would keep showing the
+ * text of the first render. Everything that names a folder goes through here.
+ */
+export function normalizePath(input: string): string {
+  const unified = input.replace(/\\/g, '/');
+  const trimmed = unified.replace(/\/+$/, '');
+  if (trimmed === '') {
+    return '/';
+  }
+  // `C:` would lose its slash and stop being a path.
+  return /^[A-Za-z]:$/.test(trimmed) ? `${trimmed}/` : trimmed;
+}

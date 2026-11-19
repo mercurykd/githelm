@@ -284,7 +284,7 @@ npm run typecheck    # tsc --noEmit
 npm test             # 构建扩展与测试树、校验清单、运行测试套件
 ```
 
-`npm test` 直接对真实的临时 git 仓库运行 **415 个测试**（410 通过，5 跳过）—— `git` 二进制从不被 mock。同一条命令还会运行 `npm run validate`：当某个按键或菜单项指向未知命令，或者缺少 `main`、图标、shim、`CHANGELOG.md`，或者某个 README 没有指向另外两份 README 的语言切换链接时，它会失败。
+`npm test` 直接对真实的临时 git 仓库运行 **418 个测试**（413 通过，5 跳过）—— `git` 二进制从不被 mock。同一条命令还会运行 `npm run validate`：当某个按键或菜单项指向未知命令，或者缺少 `main`、图标、shim、`CHANGELOG.md`，或者某个 README 没有指向另外两份 README 的语言切换链接时，它会失败。
 
 本 README 中的截图不是窗口截图：`scripts/make-screenshots.mjs` 向真实的 `renderStatus` 与 `renderLog` 索取文本和 span，`scripts/make-screenshots.py` 用 `contributes.colors` 的值和 `views/highlight.ts` 里的 span 映射把它们画出来。只有边框——标签条和光标——是手绘的，因此图片不可能展示缓冲区实际并不产生的布局或颜色。
 

@@ -38,6 +38,8 @@ export interface BranchEntry {
   behind: number;
   subject: string;
   isRemote: boolean;
+  /** HEAD points at this branch, but it has no commit yet — `git init` and nothing more. */
+  unborn?: boolean;
 }
 
 const REF_FORMAT = '--format=%(refname:short)	%(HEAD)	%(upstream:short)	%(upstream:track)	%(contents:subject)';
@@ -63,11 +65,28 @@ async function readRefs(repoPath: string, ref: 'refs/heads' | 'refs/remotes', is
 
 export async function listBranchEntries(repoPath: string, includeRemote: boolean): Promise<BranchEntry[]> {
   const local = await readRefs(repoPath, 'refs/heads', false);
-  if (!includeRemote) {
-    return local;
+  const remote = includeRemote ? await readRefs(repoPath, 'refs/remotes', true) : [];
+  if (local.length === 0) {
+    // A repository that has just been initialised has an unborn HEAD: the branch
+    // name exists in `.git/HEAD` but `refs/heads` is still empty, so git lists no
+    // branches at all while `git status` reports the name. Show that branch, or
+    // the screen looks broken right after `git init`.
+    const unborn = await unbornBranch(repoPath);
+    if (unborn) {
+      return [
+        { name: unborn, current: true, upstream: '', ahead: 0, behind: 0, subject: '', isRemote: false, unborn: true },
+        ...remote,
+      ];
+    }
   }
-  const remote = await readRefs(repoPath, 'refs/remotes', true);
   return [...local, ...remote];
+}
+
+/** The branch HEAD points at when it has no commit yet, if that is the case. */
+async function unbornBranch(repoPath: string): Promise<string | undefined> {
+  const result = await git(repoPath, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
+  const name = result.stdout.trim();
+  return result.code === 0 && name ? name : undefined;
 }
 
 export async function deleteBranch(repoPath: string, name: string, force = false): Promise<void> {

@@ -525,6 +525,9 @@ export function activate(context: vscode.ExtensionContext): void {
     const editor = vscode.window.activeTextEditor;
     if (editor && statusBuffer.stateFor(editor.document.uri)) {
       await statusBuffer.refresh(editor.document.uri, editor.selection.active.line);
+      // The screen is re-read from git either way, so say so: with no change in the
+      // repository the text is identical and the key looks dead otherwise.
+      notify(t('msg.refreshed'));
       return;
     }
     const repo = await resolveRepo();
@@ -550,8 +553,14 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     const { resolved, files } = statusFiles(editor);
-    if (resolved.kind === 'none' || files.length === 0) {
+    if (resolved.kind === 'none') {
       notify(t('msg.cursorNotFile'));
+      return;
+    }
+    if (files.length === 0) {
+      // A section header with nothing under it: the cursor is right, the section
+      // is just empty, so git has nothing to do.
+      notify(t('msg.emptySection'));
       return;
     }
     const pending = files.filter((target) => target.section !== 'staged');
@@ -585,8 +594,14 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     const { resolved, files } = statusFiles(editor);
-    if (resolved.kind === 'none' || files.length === 0) {
+    if (resolved.kind === 'none') {
       notify(t('msg.cursorNotFile'));
+      return;
+    }
+    if (files.length === 0) {
+      // A section header with nothing under it: the cursor is right, the section
+      // is just empty, so git has nothing to do.
+      notify(t('msg.emptySection'));
       return;
     }
     const pending = files.filter((target) => target.section !== 'untracked');
@@ -615,8 +630,14 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     const { resolved, files } = statusFiles(editor);
     const paths = [...new Set(files.map((target) => target.path))];
-    if (resolved.kind === 'none' || paths.length === 0) {
+    if (resolved.kind === 'none') {
       notify(t('msg.cursorNotFile'));
+      return;
+    }
+    if (paths.length === 0) {
+      // A section header with nothing under it: the cursor is right, the section
+      // is just empty, so git has nothing to do.
+      notify(t('msg.emptySection'));
       return;
     }
 
@@ -647,8 +668,14 @@ export function activate(context: vscode.ExtensionContext): void {
       (target): target is Extract<StatusTarget, { kind: 'stash' }> => target.kind === 'stash'
     );
 
-    if (resolved.kind === 'none' || targets.length === 0) {
+    if (resolved.kind === 'none') {
       notify(t('msg.cursorNotFile'));
+      return;
+    }
+    if (targets.length === 0) {
+      // A section header with nothing under it: the cursor is right, the section
+      // is just empty, so git has nothing to do.
+      notify(t('msg.emptySection'));
       return;
     }
 
@@ -706,8 +733,14 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     const { resolved, files } = statusFiles(editor);
-    if (resolved.kind === 'none' || files.length === 0) {
+    if (resolved.kind === 'none') {
       notify(t('msg.cursorNotFile'));
+      return;
+    }
+    if (files.length === 0) {
+      // A section header with nothing under it: the cursor is right, the section
+      // is just empty, so git has nothing to do.
+      notify(t('msg.emptySection'));
       return;
     }
 

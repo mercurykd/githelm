@@ -80,6 +80,7 @@ export const en = {
   'branches.upstreamDiverged': '→ {ref}  +{ahead} −{behind}',
   'branches.upstreamGone': '→ {ref}  (gone)',
   'branches.noUpstream': '(no upstream)',
+  'branches.unborn': 'no commits yet',
   'branches.keys':
     'n create   c checkout   e rename   u upstream   x delete   m merge   D delete remote   S reset   R remote branches   g graph   T tags   r refresh   h help   q close',
 
@@ -210,6 +211,8 @@ export const en = {
   'msg.notTags': 'Git Helm: active buffer is not tags.',
   'msg.notFile': 'Git Helm: open a file from the working tree.',
   'msg.cursorNotFile': 'Cursor is not on a file or a section header.',
+  'msg.refreshed': 'Status refreshed.',
+  'msg.emptySection': 'That section has no files.',
   'msg.cursorNotCommit': 'Cursor is not on a commit.',
   'msg.cursorNotBranch': 'Cursor is not on a branch.',
   'msg.cursorNotTag': 'Cursor is not on a tag.',

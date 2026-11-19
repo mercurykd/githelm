@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { actionLabel, formatClock, recentActions } from '../git/actionLog';
 import { readLog } from '../git/log';
 import { listRemotes, readUpstream } from '../git/remotes';
-import { findRepoRoot, repoDisplayName } from '../git/repo';
+import { findRepoRoot, normalizePath, repoDisplayName } from '../git/repo';
 import { listLfsFiles } from '../git/lfs';
 import { listStashes } from '../git/stash';
 import { readSubmodules } from '../git/submodules';
@@ -27,6 +27,13 @@ const EMPTY_STATUS: RepoStatus = { ahead: 0, behind: 0, entries: [] };
 
 export interface StatusState {
   uri: vscode.Uri;
+  /**
+   * The folder this buffer was opened for, in one canonical spelling. Re-renders
+   * key the document by *this*, not by the repository root: the root arrives from
+   * git (`D:/x`) while the buffer may have been opened for a folder (`D:\x`), and
+   * a URI built from the other spelling updates a document nobody is looking at.
+   */
+  folder: string;
   /** Repository root, or the folder itself when it is not a repository yet. */
   repoPath: string;
   status: RepoStatus;
@@ -45,10 +52,11 @@ export class StatusBuffer {
   ) {}
 
   static uriFor(repoPath: string): vscode.Uri {
+    const folder = normalizePath(repoPath);
     return vscode.Uri.from({
       scheme: SCHEME,
-      path: `/status/${repoDisplayName(repoPath)}`,
-      query: encodeURIComponent(repoPath),
+      path: `/status/${repoDisplayName(folder)}`,
+      query: encodeURIComponent(folder),
     });
   }
 
@@ -72,7 +80,7 @@ export class StatusBuffer {
     if (uri.scheme !== SCHEME || !uri.path.startsWith('/status/')) {
       return undefined;
     }
-    return this.stateFor(uri)?.repoPath ?? decodeURIComponent(uri.query);
+    return this.stateFor(uri)?.folder ?? normalizePath(decodeURIComponent(uri.query));
   }
 
   /**
@@ -118,7 +126,7 @@ export class StatusBuffer {
 
   async refresh(uri: vscode.Uri, cursorLine?: number): Promise<void> {
     const state = this.stateFor(uri);
-    const folderPath = state?.repoPath ?? decodeURIComponent(uri.query);
+    const folderPath = state?.folder ?? decodeURIComponent(uri.query);
     await this.render(folderPath);
     if (cursorLine !== undefined) {
       placeCursor(uri, cursorLine);
@@ -129,7 +137,7 @@ export class StatusBuffer {
   async refreshAll(): Promise<void> {
     const folders = new Set<string>();
     for (const state of this.states.values()) {
-      folders.add(state.repoPath);
+      folders.add(state.folder);
     }
     for (const folderPath of folders) {
       await this.render(folderPath);
@@ -143,14 +151,16 @@ export class StatusBuffer {
    * runs on every render for exactly that reason.
    */
   private async render(folderPath: string): Promise<void> {
-    const repoPath = await findRepoRoot(folderPath);
-    const uri = StatusBuffer.uriFor(folderPath);
+    const folder = normalizePath(folderPath);
+    const repoPath = await findRepoRoot(folder);
+    const uri = StatusBuffer.uriFor(folder);
 
     if (!repoPath) {
-      const rendered = renderUninitialized(folderPath);
+      const rendered = renderUninitialized(folder);
       this.states.set(uri.toString(), {
         uri,
-        repoPath: folderPath,
+        folder,
+        repoPath: folder,
         status: EMPTY_STATUS,
         rendered,
         initialized: false,
@@ -195,7 +205,7 @@ export class StatusBuffer {
     const recent = recentActions(50).map((record) => `${formatClock(record.at)}  ${actionLabel(record)}`);
     const rendered = renderStatus(repoPath, status, extras, recent);
 
-    this.states.set(uri.toString(), { uri, repoPath, status, rendered, initialized: true });
+    this.states.set(uri.toString(), { uri, folder, repoPath, status, rendered, initialized: true });
     this.docs.set(uri, rendered.text);
     this.highlighter.setSpans(uri, rendered.spans);
   }

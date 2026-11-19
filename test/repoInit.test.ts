@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { readStatus } from '../src/git/status';
-import { findRepoRoot, initRepository } from '../src/git/repo';
+import { findRepoRoot, initRepository, normalizePath } from '../src/git/repo';
 import { readLog } from '../src/git/log';
 
 describe('initRepository', () => {
@@ -37,5 +37,27 @@ describe('initRepository', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('path spelling', () => {
+  it('gives Windows fsPaths and git toplevels one form', () => {
+    // The status buffer keys its document by this string. VS Code hands over
+    // `D:\x` and git prints `D:/x`; while they differ, a refresh updates a URI
+    // nobody has open and the editor keeps the text of the first render.
+    assert.equal(normalizePath('D:\\domains\\githelm'), 'D:/domains/githelm');
+    assert.equal(normalizePath('D:/domains/githelm'), 'D:/domains/githelm');
+    assert.equal(
+      encodeURIComponent(normalizePath('D:\\domains\\githelm')),
+      encodeURIComponent(normalizePath('D:/domains/githelm')),
+      'the URI query is built from the normalized path'
+    );
+  });
+
+  it('keeps roots whole and only drops the trailing slash', () => {
+    assert.equal(normalizePath('D:\\'), 'D:/');
+    assert.equal(normalizePath('C:/'), 'C:/');
+    assert.equal(normalizePath('/home/me/repo/'), '/home/me/repo');
+    assert.equal(normalizePath('/'), '/');
   });
 });

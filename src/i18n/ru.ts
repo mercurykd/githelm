@@ -77,6 +77,7 @@ export const ru: Record<MessageKey, string> = {
   'branches.upstreamDiverged': '→ {ref}  +{ahead} −{behind}',
   'branches.upstreamGone': '→ {ref}  (удалён)',
   'branches.noUpstream': '(нет upstream)',
+  'branches.unborn': 'коммитов ещё нет',
   'branches.keys':
     'n создать   c checkout   e переименовать   u upstream   x удалить   m merge   D удалить на remote   S reset   R удалённые ветки   g граф   T теги   r обновить   h помощь   q закрыть',
 
@@ -207,6 +208,8 @@ export const ru: Record<MessageKey, string> = {
   'msg.notTags': 'Git Helm: активный буфер — не теги.',
   'msg.notFile': 'Git Helm: откройте файл из рабочей копии.',
   'msg.cursorNotFile': 'Курсор не на файле и не на заголовке секции.',
+  'msg.refreshed': 'Статус обновлён.',
+  'msg.emptySection': 'В этой секции нет файлов.',
   'msg.cursorNotCommit': 'Курсор не на коммите.',
   'msg.cursorNotBranch': 'Курсор не на ветке.',
   'msg.cursorNotTag': 'Курсор не на теге.',
