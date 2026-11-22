@@ -16,9 +16,8 @@ export function buildActionLogModel(): ListModel {
   // Newest first: the last thing that happened is what you look for.
   const records = [...allActions()].reverse();
 
-  const facts: FactModel[] = [
-    { label: '', value: t('actionLog.count', { count: records.length }), role: 'meta' },
-  ];
+  // No count line: the block heading counts its own rows.
+  const facts: FactModel[] = [];
 
   const rows: RowItemModel[] = records.map((record, index) => ({
     // The record's place in the log is its id. A refresh that only appends leaves the
@@ -34,7 +33,6 @@ export function buildActionLogModel(): ListModel {
     kind: 'actionlog',
     title: t('actionLog.title', { app: t('app.name') }),
     facts,
-    keysTitle: t('status.keysHeader'),
     hints: parseHints(t('actionLog.keys')),
     blocks: [
       {
@@ -46,6 +44,7 @@ export function buildActionLogModel(): ListModel {
       },
     ],
     selectFirst: t('webview.selectItem'),
-    emptyText: t('webview.emptyList'),
+    // A log with nothing in it says so in the log's own words, not in the generic ones.
+    emptyText: t('actionLog.empty'),
   };
 }

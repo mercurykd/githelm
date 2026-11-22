@@ -2,7 +2,7 @@
   "name": "githelm",
   "displayName": "Git Helm",
   "description": "Keyboard-driven git client for VS Code: status buffer, log graph, staging, diffs, stash, rebase and worktrees — GitSavvy-style, one screen per task.",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "mercurykd",
   "license": "MIT",
   "repository": {

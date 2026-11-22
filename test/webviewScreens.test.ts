@@ -89,7 +89,7 @@ describe('branches screen as a panel', () => {
     assert.equal(model.blocks.length, 2);
     assert.match(model.blocks[1].title, /origin/, 'the remote block names the remote');
     assert.equal(model.blocks[1].rows.length, 2);
-    assert.equal(model.facts[0].value, t('branches.count', { local: 2 }) + t('branches.countRemote', { count: 2 }));
+    assert.deepEqual(model.facts, [], 'no count line: the block heading carries the count');
     assert.ok(model.title.includes(t('log.titleAll')), 'the title says remotes are shown, like the buffer');
   });
 
@@ -123,7 +123,7 @@ describe('branches screen as a panel', () => {
       assert.ok(keys.includes(hint.keys), `${hint.keys} comes from the buffer’s hint line`);
       assert.ok(hint.label.length > 0, `${hint.keys} has a label`);
     }
-    assert.equal(model.keysTitle, t('status.keysHeader'));
+    assert.equal(model.title, '/repo — branches', 'the header is the repository and the screen');
   });
 });
 
@@ -138,7 +138,7 @@ describe('tags screen as a panel', () => {
       model.blocks[0].rows.map((row) => row.text),
       ['v1.0.0', 'nightly']
     );
-    assert.equal(model.facts[0].value, t('tags.count', { count: 2 }));
+    assert.deepEqual(model.facts, [], 'no count line: the rows are the count');
   });
 
   it('carries the annotation, the sha, the date and the author of each tag', () => {
@@ -314,6 +314,29 @@ describe('the history screen as a panel', () => {
     assert.equal(model.filters.find((row) => row.id === 'field:pickaxe')?.label, fieldLabel('pickaxe'));
   });
 
+  it('drops the commit count and keeps only an order the reader chose', () => {
+    // The block heading counts the commits, so the header does not. The graph order is the
+    // buffer's silence and asks for no line either; a chosen order has nowhere else to be.
+    assert.deepEqual(logModel().facts, [], 'the graph order says nothing');
+    const byDate = buildLogModel({ repoPath: '/repo', parsed: history(), all: false, filter: {}, sort: 'date', limit: 200 });
+    assert.deepEqual(
+      byDate.facts.map((fact) => fact.value),
+      [t('sort.date')]
+    );
+    const byAuthor = buildLogModel({
+      repoPath: '/repo',
+      parsed: history(),
+      all: false,
+      filter: {},
+      sort: 'author-date',
+      limit: 200,
+    });
+    assert.deepEqual(
+      byAuthor.facts.map((fact) => fact.value),
+      [t('sort.authorDate')]
+    );
+  });
+
   it('says so when the page is full, so the reader can ask for more', () => {
     const full = logModel(history(), 2);
     assert.equal(full.more, true, 'a full page means there may be another one');
@@ -347,7 +370,7 @@ describe('the history screen as a panel', () => {
     const model = logModel();
     assert.match(model.filterTitle, /./, 'the filter block is titled');
     assert.ok(model.hints.length > 0, 'the hint line is parsed from the buffer’s key line');
-    assert.equal(model.keysTitle, t('status.keysHeader'));
+    assert.equal(model.title, '/repo — commit history', 'the header names the repository, as the other screens do');
     assert.equal(model.hints[0].keys, 'enter', 'the buffer’s first hint comes first');
   });
 });
@@ -806,6 +829,24 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
     assert.ok(!/doc-tip/.test(STYLE), 'no popup box in the stylesheet either');
   });
 
+  it('keeps a table row’s subject in its column instead of moving it to the row’s edge', () => {
+    // A wrapping flex line breaks on the width an item asks for, and a text item asks for
+    // its whole length — so a subject longer than the room left on the line moved to a
+    // line of its own, where it started at the row's left edge, away from its column.
+    // Asking for no width keeps it on the row's one line, and the text wraps inside the
+    // box the model's columns left for it.
+    const rule = STYLE.slice(STYLE.indexOf('.item-row > .item-part:last-child'));
+    assert.ok(rule.length > 0, 'the free text of a row has a rule of its own');
+    const body = rule.slice(rule.indexOf('{'), rule.indexOf('}'));
+    assert.match(body, /flex: 1 1 0;/, 'the part asks for no width, so the line never breaks before it');
+    assert.match(body, /min-width: 6ch;/, 'and it keeps a readable floor when the columns fill the panel');
+    assert.match(body, /overflow-wrap: break-word;/, 'a word too long for the box breaks inside it');
+    // The tag rows are the table: their columns come from the model's padding, and the row
+    // must not add a gap of its own or start the columns at the row's edge.
+    const table = STYLE.slice(STYLE.indexOf('.item-row.aligned {'));
+    assert.match(table.slice(0, table.indexOf('}')), /padding-left: calc\(2ch \+ 4px\)/, 'the buffer’s two-space indent');
+  });
+
   it('diffs a whole stash from its row, without planning a range git cannot read', () => {
     // `d` on a stash row used to ask for `git diff --name-only ^..`, which git answers with
     // `fatal: bad revision '^..'` — exit 128, an error notification and no diff at all.
@@ -947,5 +988,21 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
         assert.ok(host.includes(`case '${action}':`), `${screen} ${action} runs the buffer’s case`);
       }
     }
+  });
+
+  it('keeps the header the same on every screen and puts the status facts under it', () => {
+    // The header is the screen's line and its keys, closed by the rule, on every screen;
+    // what the status screen says about where it is looking is the column's first block.
+    const body = CLIENT.slice(CLIENT.indexOf('function render(): void'), CLIENT.indexOf('function moreIfAtEnd'));
+    assert.ok(
+      body.indexOf('renderKeys(header, model.hints)') < body.indexOf('app.append(header)'),
+      'the keys are part of the header'
+    );
+    assert.ok(!body.includes('renderFacts(header'), 'the header says the same thing on every screen');
+    assert.ok(
+      body.indexOf('app.append(header)') < body.indexOf('renderFacts(app, model.facts)'),
+      'the facts come after the header, not inside it'
+    );
+    assert.ok(!CLIENT.includes('title-block'), 'the title is not wrapped in a block of its own');
   });
 });

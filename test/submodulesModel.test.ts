@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Submodule } from '../src/git/submodules';
+import { t } from '../src/i18n';
 import { buildSubmodulesModel } from '../src/webview/model/submodules';
 
 /**
@@ -49,28 +50,25 @@ describe('buildSubmodulesModel', () => {
     }
   });
 
-  it('counts the states in the summary', () => {
+  it('leaves the counting to the block heading', () => {
     const model = buildSubmodulesModel('/repo', SUBS);
-    const summary = model.facts[0].value;
-    assert.ok(summary.includes('4 submodules'), summary);
-    assert.ok(summary.includes('1 up to date'), summary);
-    assert.ok(summary.includes('1 at another commit'), summary);
-    assert.ok(summary.includes('1 not initialized'), summary);
-    assert.ok(summary.includes('1 in conflict'), summary);
+    assert.deepEqual(model.facts, [], 'the header says which screen this is, not how many rows it has');
+    assert.equal(model.blocks[0].rows.length, 4);
   });
 
   it('explains an unavailable list instead of claiming there are none', () => {
     const model = buildSubmodulesModel('/repo', [], '\n\nsh: pipe refused\nsecond line');
-    assert.ok(model.facts[0].value.includes('unavailable'), model.facts[0].value);
-    assert.ok(model.facts[1].value.includes('reason: sh: pipe refused'), model.facts[1].value);
-    assert.ok(!model.facts.some((fact) => fact.value.includes('second line')), 'only one sentence');
+    assert.equal(model.facts.length, 1, 'only git’s reason stays in the header');
+    assert.ok(model.facts[0].value.includes('reason: sh: pipe refused'), model.facts[0].value);
+    assert.ok(!model.facts[0].value.includes('second line'), 'only one sentence');
+    assert.equal(model.emptyText, t('submodules.unavailable'));
     assert.equal(model.blocks[0].rows.length, 0);
     assert.ok(model.blocks[0].empty?.includes('cannot list them'), model.blocks[0].empty);
   });
 
   it('says so when there are none', () => {
     const model = buildSubmodulesModel('/repo', []);
-    assert.ok(model.facts[0].value.includes('no submodules'), model.facts[0].value);
+    assert.equal(model.emptyText, t('submodules.empty'));
     assert.equal(model.blocks[0].rows.length, 0);
   });
 

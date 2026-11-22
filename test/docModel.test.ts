@@ -61,7 +61,6 @@ describe('buildDocModel', () => {
       title: 'src/a.ts',
       text,
       spans: [span(1, 2, 3, 'file-modified'), span(1, 4, 13, 'path')],
-      keysTitle: 'keys',
       selectFirst: 'select',
       emptyText: 'empty',
     });
@@ -85,7 +84,6 @@ describe('buildDocModel', () => {
       title: 'a',
       text: 'one\n',
       spans: [],
-      keysTitle: 'keys',
       selectFirst: 'select',
       emptyText: 'empty',
     });
@@ -101,7 +99,6 @@ describe('buildDocModel', () => {
       title: 'a',
       text: '',
       spans: [],
-      keysTitle: 'keys',
       selectFirst: 'select',
       emptyText: 'nothing to diff',
     });
@@ -120,7 +117,6 @@ describe('a document file list', () => {
       text,
       spans: [],
       groups,
-      keysTitle: 'keys',
       selectFirst: 'select',
       emptyText: 'empty',
     });

@@ -140,7 +140,6 @@ export interface StatusModel {
   column: ColumnBlockModel[];
   commits: CommitsBlockModel;
   hints: HintModel[];
-  keysTitle: string;
   /** Shown instead of the file list when nothing is staged, changed or untracked. */
   cleanText: string;
   /** Shown when a key needs rows and nothing is selected. */
@@ -195,7 +194,6 @@ export interface ListModel {
   kind: 'branches' | 'tags' | 'submodules' | 'actionlog';
   title: string;
   facts: FactModel[];
-  keysTitle: string;
   hints: HintModel[];
   blocks: RowBlockModel[];
   /** Shown when a key needs a row and nothing is selected. */
@@ -247,7 +245,6 @@ export interface LogModel {
   kind: 'log';
   title: string;
   facts: FactModel[];
-  keysTitle: string;
   hints: HintModel[];
   filterTitle: string;
   filters: LogFilterRowModel[];
@@ -300,7 +297,6 @@ export interface DocModel {
   screen: DocKind;
   title: string;
   facts: FactModel[];
-  keysTitle: string;
   hints: HintModel[];
   lines: DocLineModel[];
   /**

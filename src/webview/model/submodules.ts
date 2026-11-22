@@ -32,25 +32,11 @@ const MARK_ROLE: Record<SubmoduleState, ColorRole> = {
  * screens say the same thing about a submodule, including why the list is unavailable.
  */
 export function buildSubmodulesModel(repoPath: string, submodules: Submodule[], error?: string): ListModel {
-  const counts = submodules.reduce<Record<string, number>>((acc, sub) => {
-    acc[sub.state] = (acc[sub.state] ?? 0) + 1;
-    return acc;
-  }, {});
-  const states = (Object.keys(counts) as SubmoduleState[])
-    .map((state) => t(`submodules.state.${state}` as const, { count: counts[state] }))
-    .join(', ');
-  const summary = error
-    ? t('submodules.unavailable')
-    : submodules.length === 0
-      ? t('submodules.empty')
-      : t('submodules.count', { count: submodules.length, states });
-
-  const facts: FactModel[] = [{ label: '', value: summary, role: 'meta' }];
-  if (error) {
-    // git's own words, cut to one sentence the way the buffer cuts them: a raw stderr
-    // line can be hundreds of characters of shell noise.
-    facts.push({ label: '', value: t('submodules.reason', { message: shortSubmoduleReason(error) }), role: 'meta' });
-  }
+  // No count line: the block heading carries `(n)` and an empty screen says so in its own
+  // words. git's reason for not listing them at all stays — that is not a count.
+  const facts: FactModel[] = error
+    ? [{ label: '', value: t('submodules.reason', { message: shortSubmoduleReason(error) }), role: 'meta' }]
+    : [];
 
   const rows: RowItemModel[] = submodules.map((sub) => {
     const note = sub.describe
@@ -81,7 +67,6 @@ export function buildSubmodulesModel(repoPath: string, submodules: Submodule[], 
     kind: 'submodules',
     title: t('submodules.title', { repo: repoPath }),
     facts,
-    keysTitle: t('status.keysHeader'),
     hints: parseHints(t('submodules.keys')),
     blocks: [
       {
@@ -93,6 +78,7 @@ export function buildSubmodulesModel(repoPath: string, submodules: Submodule[], 
       },
     ],
     selectFirst: t('webview.selectItem'),
-    emptyText: t('webview.emptyList'),
+    // An empty screen of submodules says there are none, not that there is nothing to see.
+    emptyText: error ? t('submodules.unavailable') : t('submodules.empty'),
   };
 }

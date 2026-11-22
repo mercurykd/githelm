@@ -145,7 +145,6 @@ write('status.html', model);
       title: 'src/webview/model/doc.ts',
       text: log.text,
       spans: log.spans,
-      keysTitle: 'keys',
       selectFirst: '',
       emptyText: 'nothing to blame',
     })

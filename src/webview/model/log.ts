@@ -1,5 +1,4 @@
 import { LogFilter, LogSort, ParsedLog, isFilterEmpty, logRows } from '../../git/log';
-import { repoDisplayName } from '../../git/repo';
 import { t } from '../../i18n';
 import type { Span, SpanKind } from '../../util/span';
 import { FILTER_FIELDS, fieldLabel } from '../../views/logFilters';
@@ -37,14 +36,18 @@ export function buildLogModel(input: LogModelInput): LogModel {
   const { repoPath, parsed, all, filter, sort, range, leftRight, limit } = input;
 
   const suffix = range ?? (all ? t('log.titleAll') : '');
+  // The header names the screen the way every other screen does — the repository, an
+  // em dash, the screen — so a tab of the history reads like a tab of the branches.
   const title =
-    t('log.title', { repo: repoDisplayName(repoPath) }) +
+    t('log.title', { repo: repoPath }) +
     (suffix ? ` ${suffix}` : '') +
     (leftRight ? '  < >' : '');
 
-  const sortLabel = sort === 'topo' ? '' : `, ${sort === 'author-date' ? t('sort.authorDate') : t('sort.date')}`;
-  const summary = t('log.count', { count: parsed.commits.length }) + (all ? t('log.countAll') : '') + sortLabel;
-  const facts: FactModel[] = [{ label: '', value: summary, role: 'meta' }];
+  // No count line: the block heading counts the commits. The order stays, because the key
+  // that changes it says nowhere else what it is set to — and the graph order is the
+  // silence of the buffer, so only a chosen order gets a line under the title.
+  const sortLabel = sort === 'author-date' ? t('sort.authorDate') : t('sort.date');
+  const facts: FactModel[] = sort === 'topo' ? [] : [{ label: '', value: sortLabel, role: 'meta' }];
 
   const rows: LogRowModel[] = logRows(parsed).map((row, index) => {
     const model: LogRowModel = {
@@ -64,7 +67,6 @@ export function buildLogModel(input: LogModelInput): LogModel {
     kind: 'log',
     title,
     facts,
-    keysTitle: t('status.keysHeader'),
     // The key line is the buffer's, unedited: the panel has no keys of its own here, so
     // the hint line cannot drift from what the keys actually do.
     hints: parseHints(t('log.keys')),

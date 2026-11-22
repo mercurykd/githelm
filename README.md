@@ -72,7 +72,7 @@ Every screen is a webview panel; there is no other interface to switch to, and n
 
 ## Keys
 
-The `keys` column of every screen is three lines tall and starts under the title: long hint lists are packed to fit that height instead of growing the column. The screen with the longest key list, the status screen, keeps it a little to the left of that column, and the list screens — tags, branches and the history graph — keep it closer still, so the hints stay on screen and short rows are not followed by a wide empty gutter; the history screen gives its filter block the same room, so it begins on the sixth line as well.
+Every screen is headed the same way: one line naming it — the repository, an em dash, the screen (`D:/work/app — branches`) — with the keys of that screen in a column of their own that starts at the middle of the panel, so the first key holds the same place on every screen, wrapping in that column — three lines on a full panel — and a blank line under it parts the header from the rows, with no rule between them. The header is the same shape and the same height everywhere, the status screen included: what that screen says about where it is looking stands under the header, as the first block of the column — two lines, the branch with its tracking state and `HEAD`. No screen counts its rows up there: the block heading carries the count (`## local (2)`), and the rows are the list. The hints are printed as `key label` pairs with no `keys` heading over them, and a panel narrower than 820 pixels puts them back under the title, full width, rather than squeezing the two columns.
 
 
 ### Status — `alt+g`
@@ -109,9 +109,9 @@ The `keys` column of every screen is three lines tall and starts under the title
 
 The staged, unstaged and untracked sections are always on screen, even when empty: a section that disappears would move every row under it and drop the cursor on a different file. Only conflicts comes and goes, because its absence is the normal state.
 
-The status header names the branch, its tracking state (`origin/main: +2 −1` — the counters that moved, a counter at zero is left out), `HEAD`, the repository, the remote it pushes to, and the key hints of the screen in three lines. The `remotes`, `worktrees` and `stash` blocks share one column on the right, in that order, beside the file sections: the files keep the left half, a six-column gutter separates the two halves, one blank row separates two blocks of the column the way it does on the file side, and the column starts below the key list, level with `staged`. A title of the column can share a line with a title of the file side (`## staged` beside `## remotes`); the cursor column decides which of the two a key acts on.
+The status header is `D:/work/app — status` — the path, the em dash, the screen — with the screen's key hints in their column at the middle, exactly like every other header; under it, as the first block of the column, two lines: the branch with its tracking state (`origin/main: +2 −1` — the counters that moved, a counter at zero is left out) and `HEAD`. The repository is the title's own word and the remote is a block of its own, so neither is repeated among those lines. The `remotes`, `worktrees` and `stash` blocks share one column on the right, in that order, beside the file sections: the files keep the left half, a six-column gutter separates the two halves, and one blank row separates two blocks of the column the way it does on the file side. A title of the column can share a line with a title of the file side (`## staged` beside `## remotes`); the cursor column decides which of the two a key acts on.
 
-Every hint of the screen is one line long: the column is as wide as its widest hint (the worktree one, `n add   enter switch   S-Enter window   A-Enter here   x remove   W prune`), so no key list has to be read in two places. The `remotes` block lists every remote with its URL; the "last commits" block always shows subject, author and date.
+Every hint is one `key label` pair, and the line wraps when the panel is narrow: the header is as wide as the panel, so no key list has to be read in two places. The `remotes` block lists every remote with its URL; the "last commits" block always shows subject, author and date.
 
 The `stash` block lists the stashes of the repository and is drawn even when there are none, because its keys (`z stash`, `enter files`, `d diff`, `a apply`, `p pop`, `x drop`) are the only place the status buffer says how to make the first one. `z` decides what to stash from the cursors: files under them go in and nothing else, so no question is asked. With the cursor on a section title the whole section goes in; with no file under the cursor a list offers `--staged` (the index alone) and `-u` (untracked files as well), at most one of the two, and Enter with nothing picked stashes the working tree. Nothing is on by default: an untracked file is stashed only when `-u` says so.
 
@@ -191,7 +191,7 @@ The commit screen the `Enter` opens keeps `d` for the change of every file under
 
 A tag update is never a fast-forward, so pushing a tag is always a forced update — and the force is *leased*: `U` first asks the remote what the tag points at there and sends that value as the expected one, so a tag somebody else moved in the meantime is refused instead of overwritten. A tag the remote does not have yet is pushed without any force.
 
-A row is the commit row of the history screen with the tag name standing where the graph goes: name, short sha, date, author, subject, in the same columns and with the same colours. An annotated tag shows its own message in a column of its own right after the name, and the commit subject stays at the end of the row. The list starts on the sixth line: the key hints take the three lines under the title and one line separates them from the rows. A lightweight tag has no message, so that column stays empty.
+A row is the commit row of the history screen with the tag name standing where the graph goes: name, short sha, date, author, subject, in the same columns and with the same colours. An annotated tag shows its own message in a column of its own right after the name, and the commit subject stays at the end of the row. The rows follow the header directly: the title, the key hints, the rule and one blank line, and then the list. A lightweight tag has no message, so that column stays empty.
 
 ### Submodules — `S`
 
@@ -309,7 +309,7 @@ npm run typecheck    # tsc --noEmit
 npm test             # build the extension and the test tree, validate the manifest, run the suite
 ```
 
-`npm test` runs **666 tests** (661 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
+`npm test` runs **553 tests** (548 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
 
 The screenshots in this README are demos of the status and history screens, kept in `media/demo/`. They are snapshots, not captures produced by the test suite, so a layout change means making new ones by hand.
 

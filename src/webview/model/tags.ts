@@ -21,7 +21,8 @@ const GAP = 2;
  * the author sit under each other exactly as they do in the text buffer.
  */
 export function buildTagsModel(repoPath: string, tags: TagEntry[]): ListModel {
-  const facts: FactModel[] = [{ label: '', value: t('tags.count', { count: tags.length }), role: 'meta' }];
+  // The count the buffer printed under the title is gone: the rows are the count.
+  const facts: FactModel[] = [];
 
   const annotations = tags.map((tag) => (tag.annotation ? truncate(tag.annotation, ANNOTATION_WIDTH) : ''));
   const nameWidth = tags.reduce((width, tag) => Math.max(width, tag.name.length), 0) + GAP;
@@ -53,7 +54,6 @@ export function buildTagsModel(repoPath: string, tags: TagEntry[]): ListModel {
     kind: 'tags',
     title: t('tags.title', { repo: repoPath }),
     facts,
-    keysTitle: t('status.keysHeader'),
     hints: parseHints(t('tags.keys')),
     blocks: [{ title: t('tags.section'), role: 'section', hints: [], rows, empty: t('webview.emptyList') }],
     selectFirst: t('webview.selectItem'),

@@ -177,13 +177,17 @@ function blockTitle(title: string, count: number | undefined, role: ColorRole): 
   return header;
 }
 
-/** The `keys` column of the header, printed the way the text buffer prints it. */
-function renderKeys(container: HTMLElement, keysTitle: string, hints: HintModel[]): void {
+/**
+ * The key hints of the header, in the column that starts at the middle of the panel, right of
+ * the screen's own line — the repository, an em dash, the screen. They have no word of their
+ * own in front, because there is only one list of keys on a screen and a heading over it would
+ * name what is already plain, and they wrap in that column instead of running off the panel.
+ */
+function renderKeys(container: HTMLElement, hints: HintModel[]): void {
   if (hints.length === 0) {
     return;
   }
   const block = element('section', 'keys-block');
-  block.append(element('h2', 'keys-title role-section', keysTitle));
   const list = element('ul', 'hint-list');
   for (const hint of hints) {
     const item = element('li', 'hint');
@@ -197,7 +201,15 @@ function renderKeys(container: HTMLElement, keysTitle: string, hints: HintModel[
   container.append(block);
 }
 
+/**
+ * The lines that say where the screen is looking, drawn under the header and above the rows.
+ * Only the status screen has them — the list screens count their own rows in the block
+ * headings — so an empty list adds no element and no gap.
+ */
 function renderFacts(container: HTMLElement, facts: FactModel[]): void {
+  if (facts.length === 0) {
+    return;
+  }
   const list = element('dl', 'facts');
   for (const fact of facts) {
     list.append(element('dt', 'fact-label', fact.label));
@@ -568,12 +580,14 @@ function render(): void {
     return;
   }
   const header = element('header', 'header');
-  const title = element('div', 'title-block');
-  title.append(element('h1', 'title', model.title));
-  renderFacts(title, model.facts);
-  header.append(title);
-  renderKeys(header, model.keysTitle, model.hints);
+  header.append(element('h1', 'title', model.title));
+  renderKeys(header, model.hints);
   app.append(header);
+
+  // The facts are the screen's preamble, not part of its header: the header is the same on
+  // every screen — the screen's line with its keys beside it — and the status screen says
+  // where it is looking under it, on the column's own blank line, before the rows.
+  renderFacts(app, model.facts);
 
   if (model.kind === 'status') {
     const main = element('main', 'main');

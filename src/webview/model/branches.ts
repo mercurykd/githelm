@@ -21,10 +21,9 @@ export function buildBranchesModel(
   const local = entries.filter((entry) => !entry.isRemote);
   const remote = entries.filter((entry) => entry.isRemote);
 
-  const summary =
-    t('branches.count', { local: local.length }) +
-    (showRemote ? t('branches.countRemote', { count: remote.length }) : '');
-  const facts: FactModel[] = [{ label: '', value: summary, role: 'meta' }];
+  // No count line under the title: the header says which screen this is and which keys it
+  // answers to, and the blocks below already show how many rows each of them holds.
+  const facts: FactModel[] = [];
 
   const blocks: RowBlockModel[] = [];
   const sections: { title: string; list: BranchEntry[] }[] = [
@@ -49,8 +48,8 @@ export function buildBranchesModel(
       continue;
     }
     blocks.push({
-      // `local`, `remote: origin`: the panel prints the count itself, as `## local (2)`
-      // does in the buffer, so the title carries only the name.
+      // `local`, `remote: origin`: the title carries only the name. The count the buffer
+      // printed in the header is gone, and the rows are the count.
       title: section.title,
       role: 'section',
       hints: [],
@@ -62,7 +61,6 @@ export function buildBranchesModel(
     kind: 'branches',
     title: t('branches.title', { repo: repoPath }) + (showRemote ? t('log.titleAll') : ''),
     facts,
-    keysTitle: t('status.keysHeader'),
     hints: parseHints(t('branches.keys')),
     blocks,
     selectFirst: t('webview.selectItem'),

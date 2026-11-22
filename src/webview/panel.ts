@@ -698,8 +698,8 @@ export class StatusWebview extends ScreenPanel {
       readUpstream(repoPath),
       readLog(repoPath, { limit: 10, dateFormat }),
     ]);
-    const remoteName = upstream?.ref.split('/')[0];
-    const remote = remoteName ? remotes.find((entry) => entry.name === remoteName) : undefined;
+    // The header names the repository itself, so the model needs no `remote` of its own:
+    // the remotes are the column's rows.
     return buildStatusModel({
       repoPath,
       status,
@@ -708,7 +708,6 @@ export class StatusWebview extends ScreenPanel {
       worktrees,
       commits: history.commits,
       ...(upstream ? { upstream } : {}),
-      ...(remote ? { remote } : {}),
     });
   }
 
@@ -1346,7 +1345,6 @@ export class DocWebview extends ScreenPanel {
       text,
       spans: this.docDeps.spansOf(this.uri),
       groups: this.docDeps.groupsOf?.(this.uri),
-      keysTitle: t('status.keysHeader'),
       selectFirst: t('webview.selectFirst'),
       emptyText: t('diff.empty', { mode: '' }).trim(),
     });

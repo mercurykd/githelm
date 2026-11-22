@@ -38,7 +38,6 @@ export interface DocModelInput {
   hints?: HintModel[];
   facts?: DocModel['facts'];
   groups?: readonly DocModelGroup[];
-  keysTitle: string;
   selectFirst: string;
   emptyText: string;
 }
@@ -137,7 +136,6 @@ export function buildDocModel(input: DocModelInput): DocModel {
     screen: input.screen,
     title: input.title,
     facts: input.facts ?? [],
-    keysTitle: input.keysTitle,
     hints: input.hints ?? [],
     lines,
     groups: docGroups(input.groups),

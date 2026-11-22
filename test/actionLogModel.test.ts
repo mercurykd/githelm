@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { clearActions, recordAction } from '../src/git/actionLog';
+import { t } from '../src/i18n';
 import { buildActionLogModel } from '../src/webview/model/actionlog';
 
 /**
@@ -40,7 +41,8 @@ describe('buildActionLogModel', () => {
     clearActions();
     const model = buildActionLogModel();
     assert.equal(model.blocks[0].rows.length, 0);
-    assert.ok(model.facts[0].value.includes('0 git commands'), model.facts[0].value);
+    assert.deepEqual(model.facts, [], 'no count line: the block heading carries the count');
+    assert.equal(model.emptyText, t('actionLog.empty'), 'the empty screen speaks for the log');
     assert.ok(model.blocks[0].empty && model.blocks[0].empty.length > 0);
   });
 

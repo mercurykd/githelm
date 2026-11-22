@@ -15,4 +15,5 @@ tsconfig*.json
 .gitignore
 *.vsix
 .pack-tmp/**
+.pack.ps1
 .github/**

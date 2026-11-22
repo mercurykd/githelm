@@ -31,8 +31,6 @@ export interface StatusModelInput {
   /** The last commits, as the `last commits` block prints them. */
   commits: { shortSha: string; date: string; author: string; subject: string; refs?: string[] }[];
   upstream?: UpstreamInfo;
-  /** The remote `upstream` points at, when it is configured. */
-  remote?: RemoteEntry;
 }
 
 export function rowId(entry: Pick<StatusEntry, 'section' | 'path'>): string {
@@ -85,11 +83,13 @@ function divergenceParts(upstream: UpstreamInfo | undefined, ahead: number, behi
 function facts(input: StatusModelInput): FactModel[] {
   const branch = input.status.branch ?? t('status.detached');
   const head = input.status.head;
-  const remote = input.remote;
-  // The buffer paints these values part by part: the branch name and the remote
-  // name with the branch colour, a head commit with the hash colour and its subject
-  // with the metadata colour, the repository path as metadata. The labels themselves
-  // stay in the plain foreground, as they do in the buffer.
+  // The buffer paints these values part by part: the branch name with the branch
+  // colour, a head commit with the hash colour and its subject with the metadata
+  // colour. The labels themselves stay in the plain foreground, as they do in the
+  // buffer. These two lines are all the header says about the repository: the path is
+  // the title's own word and the remotes are a block of their own, so neither is
+  // repeated here. `REPO:` and `REMOTE:` were lines of this block until the header took
+  // the title over, and the screen is shorter without them.
   return [
     {
       label: t('status.branchLabel'),
@@ -107,15 +107,6 @@ function facts(input: StatusModelInput): FactModel[] {
             : {}),
         }
       : { label: t('status.headLabel'), value: t('status.noCommits'), role: 'meta', muted: true },
-    { label: t('status.repoLabel'), value: input.repoPath, role: 'meta' },
-    remote
-      ? {
-          label: t('status.remoteLabel'),
-          value: remote.name,
-          role: 'branch',
-          parts: [{ text: remote.url, role: 'plain' as ColorRole, gap: 2 as const }],
-        }
-      : { label: t('status.remoteLabel'), value: t('status.noRemote'), role: 'meta', muted: true },
   ];
 }
 
@@ -237,13 +228,12 @@ function commits(input: StatusModelInput): { title: string; hints: HintModel[]; 
 export function buildStatusModel(input: StatusModelInput): StatusModel {
   return {
     kind: 'status',
-    title: `${t('app.name')} — ${input.status.branch ?? t('status.detached')}`,
+    title: t('status.title', { repo: input.repoPath }),
     facts: facts(input),
     sections: sections(input.status),
     column: column(input),
     commits: commits(input),
     hints: parseHints(t('hints.global')),
-    keysTitle: t('status.keysHeader'),
     cleanText: t('status.clean'),
     selectFirst: t('webview.selectFirst'),
     notImplemented: t('webview.notImplemented'),

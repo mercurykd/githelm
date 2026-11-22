@@ -65,35 +65,32 @@ describe('status model', () => {
     assert.equal(untracked.pathRole, 'untracked', 'while its path keeps the section colour');
   });
 
-  it('names the branch, the head, the repository and the remote in the header', () => {
+  it('names the branch and the head in the header, and the repository in its title', () => {
     const model = buildStatusModel(input);
     const values = Object.fromEntries(model.facts.map((fact) => [fact.label, fact]));
-    assert.equal(model.title, 'Git Helm — main');
+    assert.equal(model.title, '/repo — status', 'the header says which screen this is');
+    assert.deepEqual(
+      model.facts.map((fact) => fact.label),
+      ['BRANCH:', 'HEAD:'],
+      'and the block under it is the branch and the head, nothing else',
+    );
     assert.equal(values['BRANCH:'].value, 'main');
     assert.equal(values['BRANCH:'].role, 'branch');
     assert.equal(values['HEAD:'].value, 'abc1234');
     assert.equal(values['HEAD:'].role, 'hash');
     assert.equal(values['HEAD:'].parts?.[0].text, 'Fix the thing');
     assert.equal(values['HEAD:'].parts?.[0].role, 'meta');
-    assert.equal(values['REPO:'].value, '/repo');
-    assert.equal(values['REPO:'].role, 'meta');
-    assert.equal(values['REMOTE:'].value, 'origin');
-    assert.equal(values['REMOTE:'].role, 'branch');
-    assert.equal(values['REMOTE:'].parts?.[0].text, 'git@example.com:me/repo.git');
-    assert.equal(values['REMOTE:'].parts?.[0].role, 'plain', 'the buffer leaves a URL unpainted');
   });
 
-  it('marks the head and the remote as secondary when there is nothing there', () => {
+  it('marks the head as secondary when there is no commit yet', () => {
     const unborn = buildStatusModel({
       ...input,
       status: { branch: 'master', ahead: 0, behind: 0, entries: [] },
       remotes: [],
-      remote: undefined,
     });
     const facts = Object.fromEntries(unborn.facts.map((fact) => [fact.label, fact]));
     assert.equal(facts['HEAD:'].muted, true);
     assert.equal(facts['HEAD:'].value, '(no commits yet)');
-    assert.equal(facts['REMOTE:'].muted, true);
   });
 
   it('shows the divergence of the upstream next to the branch', () => {
@@ -188,7 +185,6 @@ describe('status model', () => {
       { keys: 'alt+s', label: 'stage all' },
     ]);
     assert.ok(buildStatusModel(input).hints.length > 5, 'the screen carries the global hints');
-    assert.equal(buildStatusModel(input).keysTitle, 'keys');
   });
 
   it('maps ids back to paths and sections for the actions', () => {
