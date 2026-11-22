@@ -24,6 +24,14 @@ describe('translations', () => {
     }
   });
 
+  it('tells the reader of a commit’s file list about the new key', () => {
+    // The hint line is the only place the key is advertised: the palette is closed, and a
+    // reader on that screen is looking at the file list, not at the docs.
+    for (const table of [en, ru, zh]) {
+      assert.match(table['hints.commitFiles'], /(^|\s)t /);
+    }
+  });
+
   it('offers three languages and defaults to English', () => {
     assert.equal(getLanguage(), 'en');
     assert.deepEqual(

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { authorColumnWidth, checkoutableRefs, logRows, parseLog, readLog, truncateAuthor } from '../src/git/log';
+import { authorColumnWidth, checkoutableRefs, commitBySha, logRows, parseLog, readLog, truncateAuthor } from '../src/git/log';
 import { createTempRepo } from './helpers/tempRepo';
 
 const SEP = '\x1f';
@@ -116,6 +116,174 @@ describe('readLog in a fresh repository', () => {
       assert.deepEqual(parsed.entries, []);
       assert.equal(parsed.maxPrefixWidth, 0);
       assert.deepEqual(logRows(parsed), []);
+    } finally {
+      repo.dispose();
+    }
+  });
+});
+
+describe('a page of the history', () => {
+  /** Three commits, newest last, each with its own subject so a page is identifiable. */
+  const history = (): ReturnType<typeof createTempRepo> => {
+    const repo = createTempRepo();
+    for (const subject of ['first', 'second', 'third']) {
+      repo.git('commit', '--quiet', '--allow-empty', '-m', subject);
+    }
+    return repo;
+  };
+
+  it('reads only as many commits as it was asked for, newest first', async () => {
+    const repo = history();
+    try {
+      const all = await readLog(repo.dir, { limit: 10 });
+      assert.deepEqual(
+        all.commits.map((commit) => commit.subject),
+        ['third', 'second', 'first']
+      );
+      const page = await readLog(repo.dir, { limit: 2 });
+      assert.deepEqual(
+        page.commits.map((commit) => commit.subject),
+        ['third', 'second'],
+        'a page is the newest commits, not the oldest'
+      );
+      // A full page is what tells the panel there may be more: `more` is computed as
+      // `commits.length >= limit`, so this pairing is the lazy loading contract.
+      assert.equal(page.commits.length >= 2, true);
+      assert.equal(all.commits.length >= 3, true, 'but a page of three is the whole history');
+      const short = await readLog(repo.dir, { limit: 4 });
+      assert.equal(short.commits.length, 3, 'a limit past the end returns what exists');
+    } finally {
+      repo.dispose();
+    }
+  });
+
+  it('draws a page as the same grid the whole history has', async () => {
+    const repo = history();
+    try {
+      const page = await readLog(repo.dir, { limit: 2 });
+      const rows = logRows(page);
+      assert.equal(rows.length, 2);
+      // The graph column is padded to the widest prefix of *this* read, so a page can
+      // narrow it — the text is still the buffer's line for those commits: the graph,
+      // the sha, the date and the author in the same columns, the subject last.
+      for (const row of rows) {
+        assert.match(row.text, /^\* {2}[0-9a-f]{7} {2}\d{4}-\d{2}-\d{2} \d{2}:\d{2} {2}Test /);
+        assert.match(row.text, /(third|second)$/, 'the refs sit between the author and the subject');
+      }
+      assert.match(rows[0].text, /\[HEAD -> main\] third$/, 'the refs of the newest commit are on its row');
+    } finally {
+      repo.dispose();
+    }
+  });
+});
+
+describe('a filter', () => {
+  /** Five commits; only the first and the third mention the needle. */
+  const history = (): ReturnType<typeof createTempRepo> => {
+    const repo = createTempRepo();
+    for (const subject of ['needle one', 'second', 'needle three', 'fourth', 'fifth']) {
+      repo.git('commit', '--quiet', '--allow-empty', '-m', subject);
+    }
+    return repo;
+  };
+
+  it('searches the whole history, not the page that happens to be on screen', async () => {
+    const repo = history();
+    try {
+      // A filter is a `git log` argument, so git answers it over the history it walks and
+      // the page limit truncates the *answer*: the match five commits back is found even
+      // though the first page of two commits has no match on it at all.
+      const page = await readLog(repo.dir, { limit: 2 });
+      assert.deepEqual(
+        page.commits.map((commit) => commit.subject),
+        ['fifth', 'fourth'],
+        'the first page carries no match'
+      );
+      const matched = await readLog(repo.dir, { limit: 2, filter: { grep: 'needle' } });
+      assert.deepEqual(
+        matched.commits.map((commit) => commit.subject),
+        ['needle three', 'needle one'],
+        'both matches, including the one five commits deep'
+      );
+    } finally {
+      repo.dispose();
+    }
+  });
+
+  it('pages the matches, so a short page means the matches are exhausted', async () => {
+    const repo = history();
+    try {
+      const first = await readLog(repo.dir, { limit: 1, filter: { grep: 'needle' } });
+      assert.deepEqual(
+        first.commits.map((commit) => commit.subject),
+        ['needle three']
+      );
+      // A page of matches is what the panel turns into `more`; the next page holds the
+      // older match, and a limit past the last match comes back short.
+      const second = await readLog(repo.dir, { limit: 2, filter: { grep: 'needle' } });
+      assert.equal(second.commits.length, 2);
+      const exhausted = await readLog(repo.dir, { limit: 3, filter: { grep: 'needle' } });
+      assert.equal(exhausted.commits.length, 2, 'no more matches than git found');
+    } finally {
+      repo.dispose();
+    }
+  });
+
+  it('searches the refs in play — `a` is what widens it past HEAD', async () => {
+    const repo = createTempRepo();
+    try {
+      repo.git('commit', '--quiet', '--allow-empty', '-m', 'base');
+      repo.git('checkout', '--quiet', '-b', 'side');
+      repo.git('commit', '--quiet', '--allow-empty', '-m', 'needle on the side');
+      repo.git('checkout', '--quiet', 'main');
+      // Without `a` the walk starts at HEAD, so a match only on a side branch is not there.
+      assert.deepEqual((await readLog(repo.dir, { limit: 10, filter: { grep: 'needle' } })).commits, []);
+      assert.deepEqual(
+        (await readLog(repo.dir, { limit: 10, all: true, filter: { grep: 'needle' } })).commits.map(
+          (commit) => commit.subject
+        ),
+        ['needle on the side']
+      );
+    } finally {
+      repo.dispose();
+    }
+  });
+});
+
+describe('a commit read by its sha', () => {
+  it('finds the commit the row named, with its refs and parents', async () => {
+    const repo = createTempRepo();
+    try {
+      repo.git('commit', '--quiet', '--allow-empty', '-m', 'only');
+      const [row] = (await readLog(repo.dir, { limit: 1 })).commits;
+      const commit = await commitBySha(repo.dir, row.sha);
+      assert.equal(commit?.sha, row.sha);
+      assert.equal(commit?.shortSha, row.shortSha);
+      assert.equal(commit?.subject, 'only');
+      assert.equal(commit?.author, 'Test');
+      assert.deepEqual(commit?.refs, ['HEAD -> main']);
+    } finally {
+      repo.dispose();
+    }
+  });
+
+  it('refuses anything that is not a sha, so a row id cannot become an option', async () => {
+    const repo = createTempRepo();
+    try {
+      repo.git('commit', '--quiet', '--allow-empty', '-m', 'only');
+      for (const bad of ['', 'HEAD', 'main', 'abc', 'field:grep', 'commit:abc', '--upload-pack=calc']) {
+        assert.equal(await commitBySha(repo.dir, bad), undefined, `${bad || 'the empty string'} is refused`);
+      }
+    } finally {
+      repo.dispose();
+    }
+  });
+
+  it('has no answer for a commit that is gone', async () => {
+    const repo = createTempRepo();
+    try {
+      repo.git('commit', '--quiet', '--allow-empty', '-m', 'only');
+      assert.equal(await commitBySha(repo.dir, '0'.repeat(40)), undefined);
     } finally {
       repo.dispose();
     }

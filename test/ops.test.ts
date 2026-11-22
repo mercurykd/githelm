@@ -239,13 +239,40 @@ describe('file history', () => {
     repo = createTempRepo({ commits: [{ 'src/app.ts': 'one\n' }, { 'src/app.ts': 'two\n' }] });
     const repoPath = repo.dir;
 
-    const log = await fileLog(repoPath, 'src/app.ts');
+    const log = (await fileLog(repoPath, 'src/app.ts')).text;
     assert.ok(log.includes('История файла: src/app.ts'));
     assert.ok(log.includes('2 коммитов'));
 
+    // A blame is the file itself: its code, and a gutter of metadata beside it.
     const blame = await fileBlame(repoPath, 'src/app.ts');
-    assert.ok(blame.includes('Test'), 'blame output carries the author');
-    assert.equal(blame.trim().split('\n').length, 1);
+    assert.equal(blame.text, 'two', 'the document is the file, not a rendering of it');
+    assert.equal(blame.lines.length, 1);
+    assert.ok(blame.lines[0].gutter.includes('Test'), 'the gutter carries the author');
+    assert.equal(blame.lines[0].message, 'commit', 'and the message of the commit');
+  });
+
+  it('reads the messages of a blame from the repository, subject and body', async () => {
+    repo = createTempRepo({ commits: [{ 'src/app.ts': 'one\n' }] });
+    const repoPath = repo.dir;
+    // The second line is committed with a message that has a body: the column has room for
+    // the subject only, so the body is what the hover is for.
+    repo.write('src/app.ts', 'one\ntwo\n');
+    repo.git('add', '-A');
+    repo.git('commit', '--quiet', '-m', 'subject line for the second commit', '-m', 'and a body');
+
+    const view = await fileBlame(repoPath, 'src/app.ts');
+    assert.equal(view.text, 'one\ntwo', 'the code is the file, line for line');
+    const [first, second] = view.lines;
+    assert.equal(first.message, 'commit', 'the one-word message of the fixture commit');
+    assert.equal(
+      second.message,
+      'subject line for the second commit\n\nand a body',
+      'the whole message, body and all'
+    );
+    // The gutter has room for the subject only; the body is what the hover is for.
+    assert.ok(first.gutter.includes('commit'), 'the subject is in the gutter');
+    assert.ok(second.gutter.includes('subject line for'), 'and so is the one of the second commit');
+    assert.ok(!second.gutter.includes('body'), 'the body is not: it belongs to the hover');
   });
 
   it('uses the same author column as the history graph', async () => {
@@ -255,7 +282,7 @@ describe('file history', () => {
     repo.git('add', '-A');
     repo.git('commit', '--quiet', '--author=Ann Author <ann@example.com>', '-m', 'second');
 
-    const lines = (await fileLog(repoPath, 'src/app.ts')).split('\n');
+    const lines = (await fileLog(repoPath, 'src/app.ts')).text.split('\n');
     const longAuthor = lines.find((line) => line.includes('second'));
     const shortAuthor = lines.find((line) => line.includes('commit'));
     assert.ok(longAuthor, 'row of the long author is present');

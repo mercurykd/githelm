@@ -4,75 +4,92 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 
 /**
- * Whatever deletes or drops something has to ask first. The questions live in
- * `activate()`, where an extension host would be needed to run them, so the rule
- * is checked against the source: every command listed here must ask a `confirm.*`
- * question before it touches the repository.
+ * Whatever deletes or drops something has to ask first.
+ *
+ * The screens are panels now, so the questions are asked by the shared handlers the panels
+ * and the keys both run: `runBranch`, `runTag`, `runLog`, `runDeleteTarget`, `runReset`,
+ * `runAbort`, `runClearActionLog` in the host, and the `discard` case of the status panel,
+ * which asks with its own warning. Those bodies are where a question must be, and this
+ * file checks them in the source, because running them needs an extension host.
  */
-const DESTRUCTIVE: Array<[string, string]> = [
-  ['githelm.status.discard', 'throws file changes away'],
-  ['githelm.status.delete', 'drops a stash, removes a remote or a worktree'],
-  ['githelm.branches.delete', 'deletes a branch'],
-  ['githelm.branches.deleteRemote', 'deletes a branch on the server'],
-  ['githelm.branches.reset', 'a hard reset discards uncommitted changes'],
-  ['githelm.log.reset', 'a hard reset discards uncommitted changes'],
-  ['githelm.status.reset', 'a hard reset discards uncommitted changes'],
-  ['githelm.log.revert', 'rewrites history with an undo commit'],
-  ['githelm.tags.delete', 'deletes a tag'],
-  ['githelm.status.abortMerge', 'drops the conflict resolutions in progress'],
-  ['githelm.actionLog.clear', 'drops the record of the commands run'],
-];
+const HOST = fs.readFileSync(path.join('src', 'extension.ts'), 'utf8');
+const PANEL = fs.readFileSync(path.join('src', 'webview', 'panel.ts'), 'utf8');
 
-const SOURCE = fs.readFileSync(path.join('src', 'extension.ts'), 'utf8');
-
-/** The registered command bodies, up to the next `register(` call. */
-function bodyOf(id: string): string {
-  const start = SOURCE.indexOf(`register('${id}'`);
-  assert.ok(start >= 0, `${id} is registered`);
-  const next = SOURCE.indexOf("register('", start + 1);
-  return SOURCE.slice(start, next === -1 ? undefined : next);
+/** The source of a `const runXxx = async (…) => { … };` helper, up to the next one. */
+function helperOf(source: string, name: string): string {
+  const start = source.indexOf(`const ${name} = `);
+  assert.ok(start >= 0, `${name} exists`);
+  const end = source.indexOf('\n  const ', start + 1);
+  return source.slice(start, end < 0 ? undefined : end);
 }
 
-describe('destructive commands', () => {
-  for (const [id, why] of DESTRUCTIVE) {
-    it(`${id} asks first (${why})`, () => {
-      const body = bodyOf(id);
-      const asksHere = /t\('confirm\.[a-zA-Z]+'/.test(body);
-      const asksThroughHelper = /await confirm[A-Z][a-zA-Z]*\(/.test(body);
-      assert.ok(asksHere || asksThroughHelper, `${id} must ask a confirm.* question before it acts`);
-      if (asksHere) {
-        assert.match(body, /showWarningMessage\(/, `${id} asks through a modal warning`);
-        assert.match(body, /\{ modal: true\s*[,}]/, `${id} asks in a modal dialog, so it cannot be missed`);
-      }
-    });
-  }
+/** One `case 'x': …` block of a switch, up to the next case or `default`. */
+function caseOf(source: string, action: string): string {
+  const head = `case '${action}':`;
+  const start = source.indexOf(head);
+  assert.ok(start >= 0, `the ${action} case exists`);
+  const after = start + head.length;
+  const ends = ["\n      case '", '\n      default:', '\n        case \''].map((marker) => source.indexOf(marker, after));
+  const next = ends.filter((index) => index > after);
+  return source.slice(start, next.length > 0 ? Math.min(...next) : undefined);
+}
+
+describe('destructive actions', () => {
+  it('asks before it throws file changes away', () => {
+    const body = caseOf(PANEL, 'discard');
+    assert.match(body, /confirm\.discard/, 'the panel asks before it discards');
+    assert.match(body, /showWarningMessage\(/, 'and asks through a warning');
+    assert.match(body, /\{ modal: true\s*[,}]/, 'in a modal dialog, so it cannot be missed');
+  });
+
+  it('asks for each thing the delete key can drop', () => {
+    const body = helperOf(HOST, 'runDeleteTarget');
+    for (const key of ['confirm.dropStash', 'confirm.deleteRemote', 'confirm.removeWorktree']) {
+      assert.ok(body.includes(key), `delete asks ${key}`);
+    }
+  });
+
+  it('asks before it deletes a branch, locally and on the server', () => {
+    const body = helperOf(HOST, 'runBranch');
+    for (const key of ['confirm.deleteBranch', 'confirm.deleteRemoteBranch']) {
+      assert.ok(body.includes(key), `delete asks ${key}`);
+    }
+  });
+
+  it('names the thing it deletes: a tag is not a remote', () => {
+    const body = helperOf(HOST, 'runTag');
+    assert.ok(body.includes('confirm.deleteTag'), 'the tag dialog does not say "Delete remote"');
+    assert.ok(body.includes('confirm.deleteRemoteTag'), 'and a remote tag says it is a remote');
+  });
 
   it('asks for a hard reset, which is the mode that discards work', () => {
-    const helper = SOURCE.slice(SOURCE.indexOf('const confirmReset ='), SOURCE.indexOf("register('githelm.status.reset'"));
+    const helper = helperOf(HOST, 'confirmReset');
     assert.match(helper, /t\('confirm\.resetHard'/, 'the reset question is asked');
     assert.match(helper, /\{ modal: true \}/, 'and it is a modal one');
     assert.match(helper, /mode !== 'hard'/, 'soft and mixed reset only move the pointer, so they do not ask');
   });
 
-  it('asks for each thing the delete key can destroy', () => {
-    const body = bodyOf('githelm.status.delete');
-    for (const key of ['confirm.dropStash', 'confirm.deleteRemote', 'confirm.removeWorktree']) {
-      assert.ok(body.includes(key), `githelm.status.delete asks ${key}`);
-    }
+  it('asks before it rewrites history with an undo commit', () => {
+    const body = helperOf(HOST, 'runLog');
+    assert.ok(body.includes('confirm.revert'), 'revert asks');
   });
 
-  it('names the thing it deletes: a tag is not a remote', () => {
-    assert.ok(
-      bodyOf('githelm.tags.delete').includes('confirm.deleteTag'),
-      'the tag dialog does not say "Delete remote"'
-    );
+  it('asks before it drops the conflict resolutions in progress', () => {
+    const body = helperOf(HOST, 'runAbort');
+    assert.match(body, /t\('confirm\.abortOperation'/, 'abort asks');
+    assert.match(body, /\{ modal: true \}/, 'and it is a modal one');
+  });
+
+  it('asks before it drops the record of the commands run', () => {
+    const body = helperOf(HOST, 'runClearActionLog');
+    assert.match(body, /t\('confirm\.clearLog'/, 'clearing the action log asks');
   });
 
   it('does not ask twice for a pop or an apply, which lose nothing', () => {
     // `p` applies the stash and then drops the entry: the changes are in the
     // working tree either way, so a question would only slow the normal flow.
-    for (const id of ['githelm.status.stashPop', 'githelm.status.stashApply']) {
-      assert.doesNotMatch(bodyOf(id), /t\('confirm\./, `${id} does not ask`);
+    for (const name of ['runStashPop', 'runStashApply']) {
+      assert.doesNotMatch(helperOf(HOST, name), /t\('confirm\./, `${name} does not ask`);
     }
   });
 });

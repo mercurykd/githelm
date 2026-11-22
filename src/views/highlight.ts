@@ -1,7 +1,12 @@
 import * as vscode from 'vscode';
 import { Span, SpanKind } from '../util/span';
 
-const COLORS: Record<SpanKind, string> = {
+/**
+ * The theme colour a kind of paint is drawn in. A span is painted by a decoration type, and a
+ * blame's gutter — which is not a span — asks this same table for its colour, so a commit is
+ * the same colour in a status row and in a blame.
+ */
+export const COLOR_OF: Record<SpanKind, string> = {
   meta: 'githelm.meta',
   hash: 'githelm.hash',
   date: 'githelm.date',
@@ -48,7 +53,7 @@ const COLORS: Record<SpanKind, string> = {
 export class Highlighter implements vscode.Disposable {
   private readonly types = new Map<SpanKind, vscode.TextEditorDecorationType>();
   private readonly spans = new Map<string, Span[]>();
-  private readonly kinds: SpanKind[] = Object.keys(COLORS) as SpanKind[];
+  private readonly kinds: SpanKind[] = Object.keys(COLOR_OF) as SpanKind[];
 
 
   setSpans(uri: vscode.Uri, spans: Span[]): void {
@@ -62,6 +67,14 @@ export class Highlighter implements vscode.Disposable {
 
   clear(uri: vscode.Uri): void {
     this.spans.delete(uri.toString());
+  }
+
+  /**
+   * The spans rendered for a document. The webview draws the same buffer text the editor
+   * does, so it paints it with the same spans instead of parsing the patch again.
+   */
+  spansOf(uri: vscode.Uri): Span[] {
+    return this.spans.get(uri.toString()) ?? [];
   }
 
   apply(editor: vscode.TextEditor): void {
@@ -115,7 +128,7 @@ export class Highlighter implements vscode.Disposable {
       return existing;
     }
     const created = vscode.window.createTextEditorDecorationType({
-      color: new vscode.ThemeColor(COLORS[kind]),
+      color: new vscode.ThemeColor(COLOR_OF[kind]),
     });
     this.types.set(kind, created);
     return created;

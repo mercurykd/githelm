@@ -14,6 +14,7 @@ export type SpanKind =
   | 'worktrees'
   | 'path'
   | 'branch'
+  /** A hint line: the `keys` row every screen prints above its content. */
   | 'help'
   | 'rule'
   | 'title'

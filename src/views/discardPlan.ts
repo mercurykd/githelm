@@ -1,5 +1,5 @@
 import type { DiscardRequest } from '../git/ops';
-import type { StatusTarget } from './statusRender';
+import type { StatusTarget } from './statusTarget';
 
 export type FileTarget = Extract<StatusTarget, { kind: 'file' }>;
 

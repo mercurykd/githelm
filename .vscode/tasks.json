@@ -4,7 +4,10 @@
     {
       "type": "npm",
       "script": "build",
-      "group": { "kind": "build", "isDefault": true },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
       "problemMatcher": "$tsc",
       "label": "npm: build"
     },
@@ -14,6 +17,18 @@
       "group": "test",
       "problemMatcher": [],
       "label": "npm: test"
+    },
+    {
+      "type": "shell",
+      "command": "node scripts/preflight.cjs && npm run build:all",
+      "group": "build",
+      "problemMatcher": [],
+      "label": "githelm: preflight + build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
     }
   ]
 }

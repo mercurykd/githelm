@@ -4,20 +4,22 @@ import path from 'node:path';
 import * as vscode from 'vscode';
 import { EditableDocuments, EDIT_SCHEME } from './fs/editableDocs';
 import { getLanguage, isLanguage, Language, LANGUAGES, setLanguage, t } from './i18n';
-import { cherryPick, checkoutBranch, createBranch, deleteBranch, renameBranch, setUpstream } from './git/actions';
+import { cherryPick, checkoutBranch, createBranch, deleteBranch, listBranchEntries, renameBranch, setUpstream } from './git/actions';
+import type { BranchEntry } from './git/actions';
+import { clearActions } from './git/actionLog';
 import { buildCommitTemplate, cleanCommitMessage } from './git/commitMessage';
-import { DiffMode, diffPosition } from './git/diff';
 import { git } from './git/exec';
+import { firstParent } from './git/commitView';
 import { repoRelativePath } from './git/fileHistory';
-import { addToGitignore } from './git/ignore';
-import { compareDiff, compareRange, headSha } from './git/compare';
+import { choiceShowsDiff, compareChoices, headSha, planCompare, refTip } from './git/compare';
+import type { CompareChoice } from './git/compare';
 import { markResolved, takeSide } from './git/conflicts';
-import { checkoutableRefs, LogFilter } from './git/log';
+import { checkoutableRefs, commitBySha } from './git/log';
+import type { LogCommit } from './git/log';
 import { addRemote, listRemotes, readUpstream, removeRemote, setRemoteUrl } from './git/remotes';
 import {
   abortPendingOperation,
   deleteRemoteBranch,
-  discardPaths,
   fetchRemote,
   mergeRef,
   pendingOperation,
@@ -29,36 +31,47 @@ import {
 import type { ResetMode } from './git/ops';
 import { findRepoRoot, initRepository } from './git/repo';
 import { amendCommit, createFixupCommit, hasStagedChanges, headMessage, parentOf } from './git/rewrite';
-import { addIntentToAdd, PatchApplyError, stageAll, stageFiles, unstageAll, unstageFiles } from './git/stage';
-import { applyStash, dropStash, planStash, popStash, pushStash, showStash, stashFileDiff, StashOptions } from './git/stash';
+import { addIntentToAdd } from './git/stage';
+import { applyStash, dropStash, planStash, popStash, pushStash, stashFiles, StashOptions } from './git/stash';
+import type { StashCandidate } from './git/stash';
 import { entriesOf, readStatus } from './git/status';
-import { createTag, deleteRemoteTag, deleteTag, moveTag, pushTag, remoteTag } from './git/tags';
-import { addWorktree, isLinkedWorktree, pruneWorktrees, removeWorktree } from './git/worktree';
-import type { Submodule } from './git/submodules';
-import { updateSubmodule } from './git/submodules';
+import { createTag, deleteRemoteTag, deleteTag, listTags, moveTag, pushTag, remoteTag } from './git/tags';
+import type { TagEntry } from './git/tags';
+import { addWorktree, isLinkedWorktree, listWorktrees, pruneWorktrees, removeWorktree, samePath } from './git/worktree';
+import { readSubmoduleStatus, updateSubmodule } from './git/submodules';
 import { fetchForgeItems, ForgeItem, newPullUrl } from './forge/api';
 import { ForgeKind, ForgeRemote, parseForgeRemote } from './forge/remote';
 import { runInteractiveRebase, RebaseAbortedError } from './rebase/bridge';
 import { createReporter } from './util/notifier';
-import { ActionLogBuffer } from './views/actionLogBuffer';
-import { CompareBuffer } from './views/compareBuffer';
-import { ConflictBuffer } from './views/conflictBuffer';
-import { StashBuffer } from './views/stashBuffer';
-import { BranchesBuffer } from './views/branchesBuffer';
-import { setHintColumn } from './views/columns';
-import { planDiscard } from './views/discardPlan';
-import { CommitBuffer } from './views/commitBuffer';
-import { DiffBuffer, formatError } from './views/diffBuffer';
-import { FileHistoryBuffer } from './views/fileHistoryBuffer';
-import { HelpBuffer } from './views/helpBuffer';
+import { ConflictDoc } from './views/conflictDoc';
+import { StashDoc } from './views/stashDoc';
+import { CommitDoc } from './views/commitDoc';
+import { formatError } from './util/format';
+import { createDiffWalk } from './views/diffWalk';
+import { BlameGutter } from './views/blameGutter';
+import { HistoryDoc } from './views/historyDoc';
+import { filesOf } from './views/fileList';
+import type { FileHistoryKind } from './views/historyDoc';
 import { Highlighter } from './views/highlight';
-import { filterHint, LogBuffer } from './views/logBuffer';
-import { StatusBuffer } from './views/statusBuffer';
-import { SubmodulesBuffer } from './views/submodulesBuffer';
-import { TagsBuffer } from './views/tagsBuffer';
-import type { MessageKey } from './i18n';
-import type { StatusTarget } from './views/statusBuffer';
-import type { ResolvedTargets } from './views/statusRender';
+import { isInitRow, renderInit } from './views/initRender';
+import { initUri, parseInit } from './views/initScreen';
+import {
+  ActionLogWebview,
+  DocWebview,
+  ListWebview,
+  LogWebview,
+  ScreenPanel,
+  StatusWebview,
+  openFileDiffs,
+  openFilesAtRef,
+  openRangeDiff,
+  openRevisionDiffs,
+} from './webview/panel';
+import type { DocWebviewDeps, ListWebviewDeps, TargetAction } from './webview/panel';
+import type { PanelTarget } from './webview/targets';
+import { nextScreen } from './webview/carousel';
+import type { DocKind, RepoAction, ScreenAction, ScreenKind } from './webview/protocol';
+import type { StatusTarget } from './views/statusTarget';
 import { SCHEME, VirtualDocuments } from './views/virtualDocs';
 
 /** A file row of the status screen: the target of staging, diffing and ignoring. */
@@ -74,26 +87,18 @@ export function activate(context: vscode.ExtensionContext): void {
   const docs = new VirtualDocuments();
   const editable = new EditableDocuments();
   const highlighter = new Highlighter();
-  const statusBuffer = new StatusBuffer(docs, highlighter);
-  const diffBuffer = new DiffBuffer(docs, highlighter);
-  const logBuffer = new LogBuffer(docs, highlighter);
-  const commitBuffer = new CommitBuffer(docs, highlighter);
-  const branchesBuffer = new BranchesBuffer(docs, highlighter);
-  const tagsBuffer = new TagsBuffer(docs, highlighter);
-  const submodulesBuffer = new SubmodulesBuffer(docs, highlighter);
-  const fileHistoryBuffer = new FileHistoryBuffer(docs);
-  const helpBuffer = new HelpBuffer(docs, highlighter);
-  const actionLogBuffer = new ActionLogBuffer(docs, highlighter);
-  const compareBuffer = new CompareBuffer(docs, highlighter);
-  const stashBuffer = new StashBuffer(docs, highlighter);
-  const conflictBuffer = new ConflictBuffer(docs, highlighter);
-  setHintColumn(vscode.workspace.getConfiguration('githelm').get<number>('ui.hintColumn', 100));
+  const commitDoc = new CommitDoc(docs, highlighter);
+  const blameGutter = new BlameGutter();
+  const historyDoc = new HistoryDoc(docs, highlighter, blameGutter);
+  const stashDoc = new StashDoc(docs, highlighter);
+  const conflictDoc = new ConflictDoc(docs, highlighter);
 
   context.subscriptions.push(
     output,
     docs,
     editable,
     highlighter,
+    blameGutter,
     vscode.workspace.registerTextDocumentContentProvider(SCHEME, docs),
     vscode.workspace.registerFileSystemProvider(EDIT_SCHEME, editable, { isCaseSensitive: true })
   );
@@ -110,6 +115,485 @@ export function activate(context: vscode.ExtensionContext): void {
   // is gone in four seconds, and the user is looking at the buffer.
   const refuse = (message: string): void => reporter.refuse(message);
   const warn = (message: string): void => void vscode.window.showWarningMessage(message);
+
+  // `←`/`→` in the diff editor: step the diff on screen to the neighbouring commit. A
+  // single-file diff says what it compares by itself (its two `git:` revision URIs), so a
+  // tab reopened after a reload is walkable again the moment it is read; a multi-diff is
+  // remembered by its label, because VS Code reports no input for it at this API version.
+  const diffWalk = createDiffWalk({ notice: refuse });
+
+  // The webview status screen. The text buffers stay as they are, so the old screen
+  // keeps working while the new one grows screen by screen.
+  const statusWebview = new StatusWebview({
+    extensionUri: context.extensionUri,
+    notify,
+    warn,
+    commit: (repoPath) => runWithProgress(progressFor('githelm.status.commit'), () => commitFromBuffer(repoPath)),
+    // `t` has no progress entry in the buffer either: it asks for a name and a
+    // message, and the questions are the whole of the wait.
+    createTag: async (repoPath) => {
+      await createTagAt(repoPath);
+      await updateStatusBar();
+    },
+    stash: (repoPath, files) => runWithProgress(progressFor('githelm.status.stash'), () => runStash(repoPath, files)),
+    // The panel's keys stand for buffer commands, so they report through the same
+    // table: `f` spins `fetching` and ends with `$(check) fetched` in either UI.
+    runRepo: (action, repoPath) =>
+      runWithProgress(progressFor(PROGRESS_FOR_REPO[action]), () => runRepo(action, repoPath)),
+    runTarget: (action, repoPath, target) =>
+      runWithProgress(progressFor(PROGRESS_FOR_TARGET[action]), () => runTarget(action, repoPath, target)),
+    // `d`: the selected files in the built-in diff editor — the editor's own diff, in
+    // both UIs, because a generated patch only looks like one.
+    openDiff: (repoPath, targets) => openBuiltinDiff(repoPath, targets),
+    statusBar: () => updateStatusBar(),
+    // `Tab` walks the screens; `q` hands the keyboard to another screen that is open.
+    cycle: (from, direction, repoPath) => cycleScreens(from, direction, repoPath),
+    neighbour: (from) => focusNeighbour(from),
+  });
+  context.subscriptions.push(statusWebview);
+
+  /**
+   * The command each key of a list screen stands for, so the panel's progress line is
+   * the buffer command's own (`reset` spins and ends with `$(check) updated`, the rest
+   * have no entry and only re-read the screen).
+   */
+  const SCREEN_COMMAND: Record<'branches' | 'tags' | 'submodules', Partial<Record<ScreenAction, string>>> = {
+    branches: {
+      checkout: 'githelm.branches.checkout',
+      create: 'githelm.branches.create',
+      rename: 'githelm.branches.rename',
+      upstream: 'githelm.branches.upstream',
+      remove: 'githelm.branches.delete',
+      removeRemote: 'githelm.branches.deleteRemote',
+      merge: 'githelm.branches.merge',
+      reset: 'githelm.branches.reset',
+    },
+    tags: {
+      show: 'githelm.tags.show',
+      create: 'githelm.tags.create',
+      move: 'githelm.tags.move',
+      push: 'githelm.tags.push',
+      remove: 'githelm.tags.delete',
+      removeRemote: 'githelm.tags.deleteRemote',
+    },
+    submodules: {
+      update: 'githelm.submodules.update',
+      updateRemote: 'githelm.submodules.updateRemote',
+    },
+  };
+
+  const listDeps = (kind: 'branches' | 'tags' | 'submodules'): ListWebviewDeps => ({
+    extensionUri: context.extensionUri,
+    notify,
+    warn,
+    statusBar: () => updateStatusBar(),
+    cycle: (from, direction, repoPath) => cycleScreens(from, direction, repoPath),
+    neighbour: (from) => focusNeighbour(from),
+    // The panel's keys stand for buffer commands, so they report through the same
+    // table: `shift+s` on a branch spins `resetting` and ends with `$(check) updated`.
+    run: (action, repoPath, ids) =>
+      runWithProgress(progressFor(SCREEN_COMMAND[kind][action]), () =>
+        kind === 'branches' ? runBranch(action, repoPath, ids) : kind === 'tags' ? runTag(action, repoPath, ids) : runSubmodule(action, repoPath, ids)
+      ),
+    // `d` on a branch reads its `log …` answer on the history screen, which is the one
+    // place a range is drawn as a graph.
+    openLogRange: (repoPath, range, leftRight) => logWebview.showRange(repoPath, range, leftRight),
+  });
+
+  /** The same table for the history screen: only the keys that wait for git have a line. */
+  const LOG_COMMAND: Partial<Record<ScreenAction, string>> = {
+    reset: 'githelm.log.reset',
+    fixup: 'githelm.log.fixup',
+  };
+
+  const branchesWebview = new ListWebview(listDeps('branches'), 'branches');
+  const tagsWebview = new ListWebview(listDeps('tags'), 'tags');
+  const submodulesWebview = new ListWebview(listDeps('submodules'), 'submodules');
+  const actionLogWebview = new ActionLogWebview({
+    extensionUri: context.extensionUri,
+    notify,
+    warn,
+    statusBar: () => updateStatusBar(),
+    cycle: (from, direction, repoPath) => cycleScreens(from, direction, repoPath),
+    neighbour: (from) => focusNeighbour(from),
+    clear: () => runClearActionLog(),
+  });
+  context.subscriptions.push(branchesWebview, tagsWebview, submodulesWebview, actionLogWebview);
+
+  /**
+   * The history screen. Its keys run through `runLog` — the buffer's own implementation
+   * — and it keeps what it shows (the filters, the order, how much history has been
+   * read) to itself, so the panel and the buffer are two readings of one repository.
+   */
+  const logWebview = new LogWebview({
+    extensionUri: context.extensionUri,
+    notify,
+    warn,
+    statusBar: () => updateStatusBar(),
+    cycle: (from, direction, repoPath) => cycleScreens(from, direction, repoPath),
+    neighbour: (from) => focusNeighbour(from),
+    run: (action, repoPath, ids) =>
+      runWithProgress(progressFor(LOG_COMMAND[action]), () => runLog(action, repoPath, ids)),
+  });
+  context.subscriptions.push(logWebview);
+
+  /** Every panel, in the order the status bar and `resolveRepo()` follow them. */
+  /**
+   * The sub-screens — a commit's files, a stash's files, a conflict, a file's history —
+   * are documents, and several can be open at once, so they are panels of their own
+   * rather than stops of the carousel. One panel per document: opening the same commit
+   * again reveals the tab that is already showing it.
+   */
+  const docPanels = new Map<string, DocWebview>();
+
+  /** The name a sub-screen's tab shows: the commit, the conflict, the file of a history. */
+  const docTitleOf = (uri: vscode.Uri): string => {
+    const parts = decodeURIComponent(uri.path).split('/').filter((part) => part.length > 0);
+    return parts[parts.length - 1] ?? t('app.name');
+  };
+
+  /**
+   * Re-reads a sub-screen's document from `git` without opening a tab: what `r` does,
+   * and what every action ends with, so the panel never shows a stale patch.
+   */
+  const reloadDoc = async (uri: vscode.Uri): Promise<void> => {
+    const init = parseInit(uri);
+    if (init) {
+      // `r` on the screen that says "not a repository": the folder may have become one in a
+      // terminal since the screen was painted, in which case the screen has nothing left to
+      // say and the status panel takes its place; otherwise it is painted again, so the path
+      // and the row it offers are still the truth.
+      const root = await findRepoRoot(init.folderPath);
+      if (root) {
+        docPanels.get(uri.toString())?.dispose();
+        await statusWebview.show(root);
+        return;
+      }
+      paintInit(uri, init.folderPath);
+      return;
+    }
+    if (stashDoc.stateFor(uri)) {
+      await stashDoc.reload(uri);
+      return;
+    }
+    const conflict = conflictDoc.stateFor(uri);
+    if (conflict) {
+      await conflictDoc.prepare(conflict.repoPath, conflict.relativePath);
+      return;
+    }
+    const commit = CommitDoc.parse(uri);
+    if (commit) {
+      await commitDoc.prepare(commit.repoPath, commit.sha);
+      return;
+    }
+    const history = HistoryDoc.parse(uri);
+    if (history) {
+      await historyDoc.prepare(history.kind, history.repoPath, history.relativePath);
+    }
+  };
+
+  const docDeps = (): DocWebviewDeps => ({
+    extensionUri: context.extensionUri,
+    notify,
+    warn,
+    statusBar: () => updateStatusBar(),
+    cycle: (from, direction, repoPath) => cycleScreens(from, direction, repoPath),
+    neighbour: (from) => focusNeighbour(from),
+    textOf: (uri) => docs.get(uri),
+    spansOf: (uri) => highlighter.spansOf(uri),
+    reload: (uri) => reloadDoc(uri),
+    titleOf: (uri) => docTitleOf(uri),
+    groupsOf: (uri) => {
+      const list = commitDoc.fileListOf(uri) ?? stashDoc.fileListOf(uri);
+      if (!list) {
+        return undefined;
+      }
+      // The buffers count lines from 1, the way an editor does; the model counts them from 0.
+      return [{ header: list.header - 1, lines: list.lines.map((line) => line - 1) }];
+    },
+
+    run: (action, uri, lines) => runDoc(action, uri, lines),
+    forget: (uri) => docPanels.delete(uri.toString()),
+  });
+
+  /**
+   * Opens a sub-screen on a document: `prepare` renders it into the virtual document
+   * (the same code the buffer runs), then the panel reads it back.
+   */
+  const openDoc = async (
+    doc: DocKind,
+    uri: vscode.Uri,
+    repoPath: string,
+    prepare: () => Promise<unknown>
+  ): Promise<void> => {
+    await prepare();
+    const key = uri.toString();
+    let panel = docPanels.get(key);
+    if (!panel || !panel.open) {
+      panel = new DocWebview(docDeps(), doc, uri);
+      docPanels.set(key, panel);
+      context.subscriptions.push(panel);
+    }
+    await panel.show(repoPath);
+  };
+
+  /**
+   * `d` in the status panel: the selection in the built-in multi-diff editor — the
+   * editor's own diff, which is the same pair the SCM view would show, with folding,
+   * syntax highlighting and both sides side by side. Untracked files are adopted as
+   * intent-to-add first, or the index has nothing to compare them with.
+   */
+  const openBuiltinDiff = async (repoPath: string, targets: readonly FileTarget[]): Promise<void> => {
+    for (const target of targets) {
+      if (target.section === 'untracked') {
+        await addIntentToAdd(repoPath, target.path);
+      }
+    }
+    await openFileDiffs(repoPath, targets);
+  };
+  /**
+   * The other sub-screens. Each one is the buffer's own renderer with the tab left out,
+   * so in webview mode `enter` on a commit, a stash, a conflict or a file opens a panel
+   * that draws exactly the text the buffer would have drawn.
+   */
+  const openCommitDoc = async (repoPath: string, sha: string): Promise<void> => {
+    await openDoc('commit', CommitDoc.uriFor(repoPath, sha), repoPath, () => commitDoc.prepare(repoPath, sha));
+  };
+
+  const openStashDoc = async (repoPath: string, ref: string): Promise<void> => {
+    await openDoc('stash', StashDoc.uriFor(repoPath, ref), repoPath, () => stashDoc.prepare(repoPath, ref));
+  };
+
+  const openConflictDoc = async (repoPath: string, relativePath: string): Promise<void> => {
+    await openDoc('conflict', ConflictDoc.uriFor(repoPath, relativePath), repoPath, () =>
+      conflictDoc.prepare(repoPath, relativePath)
+    );
+  };
+
+  const openFileHistoryDoc = async (kind: FileHistoryKind, repoPath: string, relativePath: string): Promise<void> => {
+    await openDoc('file', HistoryDoc.uriFor(repoPath, kind, relativePath), repoPath, () =>
+      historyDoc.prepare(kind, repoPath, relativePath)
+    );
+  };
+
+  /**
+   * The status screen of a folder that is not a repository yet. The screen cannot be built
+   * from `git status` — git refuses the folder — so the panel draws the buffer's own
+   * `renderUninitialized()` text: the folder, the line saying it is not a repository, and
+   * the one row that fixes it. `Enter` on that row runs `git init` and the tab gives way to
+   * the status panel of the repository it created.
+   */
+  const paintInit = (uri: vscode.Uri, folderPath: string): void => {
+    const rendered = renderInit(folderPath);
+    docs.set(uri, rendered.text);
+    highlighter.setSpans(uri, rendered.spans);
+  };
+
+  const openInitDoc = async (folderPath: string): Promise<void> => {
+    const uri = initUri(folderPath);
+    await openDoc('init', uri, folderPath, async () => paintInit(uri, folderPath));
+  };
+
+  /**
+   * A compare ends in a diff, and the diff is the editor's: every file the range touches,
+   * both sides at their own revision, in one multi-diff tab. The panel and the buffer
+   * both come here, so `d` on two commits reads the same in either UI.
+   */
+  const openCompareInEditor = async (
+    repoPath: string,
+    range: string,
+    leftRef: string,
+    rightRef: string,
+    label: string
+  ): Promise<void> => {
+    if (!(await openRangeDiff(repoPath, range, leftRef, rightRef, label))) {
+      warn(t('compare.noChanges', { range: label }));
+    }
+  };
+  const openStashFiles = async (repoPath: string, ref: string): Promise<void> => {
+    await openStashDoc(repoPath, ref);
+  };
+
+  const openConflictFile = async (repoPath: string, relativePath: string): Promise<void> => {
+    await openConflictDoc(repoPath, relativePath);
+  };
+
+  const openCommitView = async (repoPath: string, sha: string): Promise<void> => {
+    await openCommitDoc(repoPath, sha);
+  };
+
+  /**
+   * A file's history: its log is text and the panel draws it; its blame is code and only an
+   * editor can highlight it — a webview has no grammar for it — so the blame is the one screen
+   * that opens in the editor.
+   */
+  const openFileHistory = async (kind: FileHistoryKind, repoPath: string, relativePath: string): Promise<void> => {
+    if (kind === 'log') {
+      await openFileHistoryDoc(kind, repoPath, relativePath);
+      return;
+    }
+    await historyDoc.openBlame(repoPath, relativePath);
+  };
+
+  /**
+   * The keys of a sub-screen, run against its document. A file list's `d` is the diff of
+   * every selected file in the editor — one multi-diff tab, not the first file only; the
+   * conflict screen has the sides, the merge editor and the resolved marker.
+   */
+  const runDoc = async (action: ScreenAction, uri: vscode.Uri, lines: number[]): Promise<void> => {
+    // The document's lines are 0-based ids; the buffers count rows from 1.
+    const rows = lines.map((line) => line + 1);
+
+    // The `git init` screen: one row, one key. With nothing selected — which is how the
+    // screen opens — `Enter` means that row; on any other line it is a no-op, as it is in
+    // the buffer, where only that row carries a target.
+    const init = parseInit(uri);
+    if (init) {
+      const onRow = rows.length === 0 || rows.some((row) => isInitRow(init.folderPath, row));
+      if (action === 'open' && onRow) {
+        await initRepo(init.folderPath);
+      }
+      return;
+    }
+
+    // A stash's file list: `d` is the change of every selected file, the stash against its parent.
+    if (stashDoc.stateFor(uri)) {
+      if (action === 'fileDiff') {
+        await openStashFileDiffs(uri, rows);
+      }
+      return;
+    }
+
+    // A commit's file list: `d` is the change of every selected file, the parent against the
+    // commit; `t` opens those files as the commit left them.
+    if (commitDoc.stateFor(uri)) {
+      if (action === 'fileDiff') {
+        await openCommitFileDiffs(uri, rows);
+      } else if (action === 'filesAtRef') {
+        await openCommitFilesAtRef(uri, rows);
+      }
+      return;
+    }
+
+    // A conflicted file: the sides, the merge editor and the resolved marker.
+    if (conflictDoc.stateFor(uri)) {
+      if (action === 'ours' || action === 'theirs' || action === 'base') {
+        await takeConflictSide(uri, action);
+      } else if (action === 'resolve') {
+        await resolveConflict(uri);
+      } else if (action === 'mergeEditor') {
+        await openMergeEditor(uri);
+      }
+      return;
+    }
+  };
+  const screenPanels: ScreenPanel[] = [statusWebview, branchesWebview, tagsWebview, submodulesWebview, logWebview, actionLogWebview];
+
+  /** The repository of the panel the user is looking at, if any panel is on screen. */
+  const visiblePanelRepo = (): string | undefined => {
+    for (const panel of screenPanels) {
+      const repo = panel.repoIfVisible();
+      if (repo) {
+        return repo;
+      }
+    }
+    return undefined;
+  };
+
+  /** Every screen that has a panel, for lookups: the carousel in `carousel.ts` is a subset. */
+  const ALL_SCREENS: ScreenKind[] = ['status', 'branches', 'tags', 'submodules', 'log', 'actionlog'];
+
+  /** Whether a panel is one of the carousel's screens, and not one of the sub-screens. */
+  const isScreenKind = (kind: ScreenKind | DocKind): kind is ScreenKind =>
+    (ALL_SCREENS as readonly string[]).includes(kind);
+
+  const panelOf = (kind: ScreenKind): ScreenPanel => {
+    switch (kind) {
+      case 'branches':
+        return branchesWebview;
+      case 'tags':
+        return tagsWebview;
+      case 'submodules':
+        return submodulesWebview;
+      case 'log':
+        return logWebview;
+      case 'actionlog':
+        return actionLogWebview;
+      default:
+        return statusWebview;
+    }
+  };
+
+  /**
+   * `Tab`: the next screen *in the tab you are in*. The screen you leave closes first, so
+   * the carousel never adds a tab — the next screen takes the place of the one that went
+   * away, which is what a carousel means inside one editor group.
+   */
+  const cycleScreens = async (from: ScreenKind | DocKind, direction: 1 | -1, repo: string): Promise<void> => {
+    // A sub-screen is a document, not a stop of the carousel: `Tab` there does nothing.
+    if (!isScreenKind(from)) {
+      return;
+    }
+    const kind = nextScreen(from, direction);
+    if (!kind) {
+      return;
+    }
+    // The repository is found *before* anything is closed: a `Tab` that cannot open the
+    // next screen must not leave the user without the screen they were reading. The
+    // panel's own repository wins, so walking from the branches of repo A opens the tags
+    // of repo A and not of the first workspace folder.
+    const target = repo || (await resolveRepo());
+    if (!target) {
+      warn(t('msg.noRepo'));
+      return;
+    }
+    panelOf(from).dispose();
+    await panelOf(kind).show(target);
+  };
+
+  /** After `q`: an open screen takes the focus, so the keys keep working. */
+  const focusNeighbour = async (from: ScreenKind | DocKind): Promise<void> => {
+    // A sub-screen has no place in the carousel: nothing to walk on from it.
+    const at = isScreenKind(from) ? ALL_SCREENS.indexOf(from) : -1;
+    for (let step = 1; at >= 0 && step < ALL_SCREENS.length; step++) {
+      const index = (at + step) % ALL_SCREENS.length;
+      const panel = panelOf(ALL_SCREENS[index]);
+      if (panel.open) {
+        panel.reveal();
+        return;
+      }
+    }
+    // No other panel: put the focus back in the editor group, where a text editor (and
+    // with it the buffer keys) can take it.
+    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+  };
+
+  /**
+   * The panel re-reads the repository on the same quarter-second debounce the
+   * buffers use. Two things call it: the file watcher below (a `git` run in a
+   * terminal, a saved document) and every command this extension runs.
+   */
+  let panelTimer: NodeJS.Timeout | undefined;
+  const schedulePanelRefresh = (): void => {
+    if (panelTimer) {
+      clearTimeout(panelTimer);
+    }
+    panelTimer = setTimeout(() => {
+      panelTimer = undefined;
+      // Every panel that is on screen follows the same events the buffers do, so a
+      // `git` run in a terminal is visible in whichever screen the user has open.
+      void Promise.all(screenPanels.map((panel) => panel.refreshIfVisible())).catch((error: unknown) =>
+        output.appendLine(`[refresh] ${formatError(error)}`)
+      );
+    }, 250);
+  };
+  context.subscriptions.push({
+    dispose: () => {
+      if (panelTimer) {
+        clearTimeout(panelTimer);
+      }
+    },
+  });
 
   const activityItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 101);
   activityItem.name = 'Git Helm';
@@ -172,23 +656,66 @@ export function activate(context: vscode.ExtensionContext): void {
     'githelm.forge.pulls': { spin: t('progress.forge') },
   };
 
+  /** The progress line of one command, if that command has one. */
+  const progressFor = (id: string | undefined): { spin: string; done?: string } | undefined =>
+    id ? PROGRESS[id] : undefined;
+
+  /**
+   * Which command each panel key stands for, so its spinner and its `$(check) line`
+   * are the ones the buffer shows for the same key. Keys without an entry here are
+   * instant in the buffer too, and stay silent in the panel.
+   */
+  const PROGRESS_FOR_REPO: Partial<Record<RepoAction, string>> = {
+    amend: 'githelm.status.amend',
+    fetch: 'githelm.status.fetch',
+    pull: 'githelm.status.pull',
+    push: 'githelm.status.push',
+    reset: 'githelm.status.reset',
+    abort: 'githelm.status.abortMerge',
+    pulls: 'githelm.forge.pulls',
+  };
+
+  const PROGRESS_FOR_TARGET: Partial<Record<TargetAction, string>> = {
+    fetch: 'githelm.status.fetch',
+    pull: 'githelm.status.pull',
+    push: 'githelm.status.push',
+  };
+
+  /**
+   * One action, reported the way the status bar reports a command: a spinner with
+   * the progress line while it runs, then `$(check) done` for four seconds, a hidden
+   * item when it has nothing to say, and a logged failure with a popup when it
+   * throws. Registered commands and the panel's keys both go through here, which is
+   * why `f` spins `fetching` in both UIs.
+   */
+  const runWithProgress = async (
+    progress: { spin: string; done?: string } | undefined,
+    handler: () => Promise<void>
+  ): Promise<void> => {
+    if (progress) {
+      showActivity(`$(sync~spin) ${progress.spin}`, progress.spin);
+    }
+    try {
+      await handler();
+      if (progress?.done) {
+        showActivity(`$(check) ${progress.done}`, progress.done, 4000);
+      } else if (progress) {
+        activityItem.hide();
+      }
+    } catch (error) {
+      fail(error);
+    } finally {
+      // A command may have moved the repository without touching the index (a tag,
+      // a fetch that changed the ahead/behind counters) and the panel is not one of
+      // the buffers the handlers re-render, so it re-reads on its own timer.
+      schedulePanelRefresh();
+    }
+  };
+
   const guarded =
     (handler: () => Promise<void>, progress?: { spin: string; done?: string }) =>
-    async (): Promise<void> => {
-      if (progress) {
-        showActivity(`$(sync~spin) ${progress.spin}`, progress.spin);
-      }
-      try {
-        await handler();
-        if (progress?.done) {
-          showActivity(`$(check) ${progress.done}`, progress.done, 4000);
-        } else if (progress) {
-          activityItem.hide();
-        }
-      } catch (error) {
-        fail(error);
-      }
-    };
+    async (): Promise<void> =>
+      runWithProgress(progress, handler);
 
   const viewOf = (uri: vscode.Uri | undefined): string => {
     if (!uri || uri.scheme !== SCHEME) {
@@ -214,9 +741,6 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     if (uri.path.startsWith('/file/')) {
       return 'text';
-    }
-    if (uri.path.startsWith('/help/')) {
-      return 'help';
     }
     if (uri.path.startsWith('/actionlog')) {
       return 'actionlog';
@@ -247,36 +771,28 @@ export function activate(context: vscode.ExtensionContext): void {
   const resolveRepo = async (): Promise<string | undefined> => {
     const editor = vscode.window.activeTextEditor;
     if (editor) {
-      const fromStatus = statusBuffer.repoForUri(editor.document.uri);
-      if (fromStatus) {
-        return fromStatus;
+      // An editor of ours is the blame, the only screen that is text: it names its repository.
+      const uri = editor.document.uri;
+      const fromDoc =
+        HistoryDoc.parse(uri)?.repoPath ??
+        CommitDoc.parse(uri)?.repoPath ??
+        StashDoc.parse(uri)?.repoPath ??
+        ConflictDoc.parse(uri)?.repoPath;
+      if (fromDoc) {
+        return fromDoc;
       }
-      const fromDiff = diffBuffer.repoForUri(editor.document.uri);
-      if (fromDiff) {
-        return fromDiff;
-      }
-      const fromLog = logBuffer.repoForUri(editor.document.uri);
-      if (fromLog) {
-        return fromLog;
-      }
-      const fromBranches = branchesBuffer.repoForUri(editor.document.uri);
-      if (fromBranches) {
-        return fromBranches;
-      }
-      const fromTags = tagsBuffer.repoForUri(editor.document.uri);
-      if (fromTags) {
-        return fromTags;
-      }
-      const fromSubmodules = submodulesBuffer.repoForUri(editor.document.uri);
-      if (fromSubmodules) {
-        return fromSubmodules;
-      }
-      if (editor.document.uri.scheme === 'file') {
-        const root = await findRepoRoot(path.dirname(editor.document.uri.fsPath));
+      if (uri.scheme === 'file') {
+        const root = await findRepoRoot(path.dirname(uri.fsPath));
         if (root) {
           return root;
         }
       }
+    }
+    // The panel is a screen of its own: with the focus in it no text editor is
+    // active, and the repository it shows is the one the user means.
+    const fromPanel = visiblePanelRepo();
+    if (fromPanel) {
+      return fromPanel;
     }
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       const root = await findRepoRoot(folder.uri.fsPath);
@@ -293,28 +809,24 @@ export function activate(context: vscode.ExtensionContext): void {
    */
   const resolveFolder = (): string | undefined => {
     const editor = vscode.window.activeTextEditor;
-    if (editor) {
-      const fromStatus = statusBuffer.folderForUri(editor.document.uri);
-      if (fromStatus) {
-        return fromStatus;
-      }
-      if (editor.document.uri.scheme === 'file') {
-        const owner = vscode.workspace.getWorkspaceFolder(editor.document.uri);
-        return owner ? owner.uri.fsPath : path.dirname(editor.document.uri.fsPath);
-      }
+    if (editor && editor.document.uri.scheme === 'file') {
+      const owner = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+      return owner ? owner.uri.fsPath : path.dirname(editor.document.uri.fsPath);
     }
-    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    return visiblePanelRepo() ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   };
 
-  /** Runs `git init` and repaints every status buffer so it becomes the real screen. */
+  /** Runs `git init` and opens the status panel of the repository it made. */
   const initRepo = async (folderPath: string): Promise<void> => {
     const root = await initRepository(folderPath);
-    const opened = vscode.window.visibleTextEditors.some((editor) => statusBuffer.stateFor(editor.document.uri));
-    await statusBuffer.refreshAll();
+    // The screen that asked is the one that gives way: its panel closes and the status panel
+    // of the new repository takes its place.
+    const initPanel = docPanels.get(initUri(folderPath).toString());
     await updateStatusBar();
-    if (!opened) {
-      await statusBuffer.open(root);
+    if (initPanel) {
+      initPanel.dispose();
     }
+    await statusWebview.show(root);
     notify(t('msg.repoInitialized', { path: root }));
   };
 
@@ -331,34 +843,6 @@ export function activate(context: vscode.ExtensionContext): void {
       throw new Error(`Editor shim not found: ${dir}. Run npm run build.`);
     }
     return dir;
-  };
-
-  const statusEditor = (): vscode.TextEditor | undefined => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      warn(t('msg.noEditor'));
-      return undefined;
-    }
-    if (!statusBuffer.stateFor(editor.document.uri)) {
-      warn(t('msg.notStatus'));
-      return undefined;
-    }
-    return editor;
-  };
-
-  /**
-   * File targets under every cursor of the status screen. A cursor on a section
-   * header covers the whole section, and overlapping cursors count once.
-   */
-  const statusFiles = (
-    editor: vscode.TextEditor
-  ): { resolved: ResolvedTargets; files: FileTarget[] } => {
-    const resolved = statusBuffer.resolveAll(editor.document.uri, editor.selections);
-    const targets = resolved?.targets ?? [];
-    return {
-      resolved: resolved ?? { kind: 'none', targets: [] },
-      files: targets.filter((target): target is FileTarget => target.kind === 'file'),
-    };
   };
 
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -413,7 +897,11 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     refreshTimer = setTimeout(() => {
       refreshTimer = undefined;
-      void statusBuffer.refreshAll().catch((error: unknown) => output.appendLine(`[refresh] ${formatError(error)}`));
+      // The panel follows the same events the screens always followed, in the same
+      // tick, so one screen never lags behind another.
+      void statusWebview
+        .refreshIfVisible()
+        .catch((error: unknown) => output.appendLine(`[refresh] ${formatError(error)}`));
       void updateStatusBar();
     }, 250);
   };
@@ -436,9 +924,21 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.onDidChangeActiveTextEditor(() => {
       syncContext();
       highlighter.applyVisible();
+      blameGutter.repaint();
       void updateStatusBar();
+      void diffWalk.sync();
     }),
-    vscode.window.onDidChangeVisibleTextEditors(() => highlighter.applyVisible()),
+    // A diff is a tab, not always the active editor: switching to one by its tab, or
+    // closed by us after a step, is only reported here.
+    vscode.window.tabGroups.onDidChangeTabs(() => void diffWalk.sync()),
+    // The arrows are gated on a key of ours, which every group's title toolbar can see, so
+    // it has to follow the group too: focusing another group makes its own tab the active
+    // one without a tab event.
+    vscode.window.tabGroups.onDidChangeTabGroups(() => void diffWalk.sync()),
+    vscode.window.onDidChangeVisibleTextEditors(() => {
+      highlighter.applyVisible();
+      blameGutter.repaint();
+    }),
     vscode.workspace.onDidChangeTextDocument((event) => {
       const editor = vscode.window.visibleTextEditors.find((candidate) => candidate.document === event.document);
       if (editor) {
@@ -452,44 +952,12 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(vscode.commands.registerCommand(id, guarded(handler, PROGRESS[id])));
   };
 
-  const stageOrUnstageSelection = async (expected: 'staged' | 'unstaged'): Promise<void> => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = diffBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      warn(t('msg.notDiff'));
-      return;
-    }
-    if (state.mode !== expected) {
-      warn(t('msg.notDiff'));
-      return;
-    }
-    const cursor = editor.selection.start.line;
-    let message: string;
-    try {
-      message = await diffBuffer.applySelection(editor.document.uri, editor);
-    } catch (error) {
-      if (error instanceof PatchApplyError) {
-        await diffBuffer.refresh(editor.document.uri, cursor);
-        warn(
-          t('msg.staleDiff')
-        );
-        return;
-      }
-      throw error;
-    }
-    await diffBuffer.refresh(editor.document.uri, cursor);
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-    notify(message);
-  };
-
   register('githelm.status.open', async () => {
     const repo = await resolveRepo();
     if (repo) {
-      await statusBuffer.open(repo);
+      await statusWebview.show(repo);
+      // The status bar follows the screen it belongs to.
+      await updateStatusBar();
       return;
     }
     const folder = resolveFolder();
@@ -498,8 +966,9 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     // No repository yet: show the status screen with a `git init` row instead of
-    // failing, and put the same action on a notification button.
-    await statusBuffer.open(folder);
+    // failing, and put the same action on a notification button. The panel draws that
+    // screen too — it is the buffer's own text — so the key never falls back to a buffer.
+    await openInitDoc(folder);
     const choice = await vscode.window.showInformationMessage(t('msg.notRepoInit'), t('action.initGit'));
     if (choice === t('action.initGit')) {
       await initRepo(folder);
@@ -507,1010 +976,78 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   register('githelm.repo.init', async () => {
-    const editor = vscode.window.activeTextEditor;
-    const folder = (editor ? statusBuffer.folderForUri(editor.document.uri) : undefined) ?? resolveFolder();
+    const folder = resolveFolder();
     if (!folder) {
       warn(t('msg.noRepo'));
       return;
     }
     const existing = await findRepoRoot(folder);
     if (existing) {
-      await statusBuffer.open(existing);
+      await statusWebview.show(existing);
       return;
     }
     await initRepo(folder);
   });
 
-  register('githelm.status.refresh', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (editor && statusBuffer.stateFor(editor.document.uri)) {
-      await statusBuffer.refresh(editor.document.uri, editor.selection.active.line);
-      // The screen is re-read from git either way, so say so: with no change in the
-      // repository the text is identical and the key looks dead otherwise.
-      notify(t('msg.refreshed'));
-      return;
-    }
-    const repo = await resolveRepo();
-    if (repo) {
-      await statusBuffer.open(repo);
-      return;
-    }
-    const folder = resolveFolder();
-    if (!folder) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    await statusBuffer.open(folder);
-  });
-
-  register('githelm.status.stage', async () => {
-    const editor = statusEditor();
-    if (!editor) {
-      return;
-    }
-    const state = statusBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      return;
-    }
-    const { resolved, files } = statusFiles(editor);
-    if (resolved.kind === 'none') {
-      notify(t('msg.cursorNotFile'));
-      return;
-    }
-    if (files.length === 0) {
-      // A section header with nothing under it: the cursor is right, the section
-      // is just empty, so git has nothing to do.
-      notify(t('msg.emptySection'));
-      return;
-    }
-    const pending = files.filter((target) => target.section !== 'staged');
-    if (pending.length === 0) {
-      notify(t('msg.alreadyStaged'));
-      return;
-    }
-    if (pending.some((target) => target.section === 'conflict')) {
-      const confirmed = await vscode.window.showWarningMessage(
-        t('msg.conflictStage'),
-        { modal: true },
-        t('action.stage')
-      );
-      if (confirmed !== t('action.stage')) {
-        return;
-      }
-    }
-    const paths = [...new Set(pending.map((target) => target.path))];
-    await stageFiles(state.repoPath, paths);
-    await statusBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    notify(t('msg.stagedCount', { count: paths.length }));
-  });
-
-  register('githelm.status.unstage', async () => {
-    const editor = statusEditor();
-    if (!editor) {
-      return;
-    }
-    const state = statusBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      return;
-    }
-    const { resolved, files } = statusFiles(editor);
-    if (resolved.kind === 'none') {
-      notify(t('msg.cursorNotFile'));
-      return;
-    }
-    if (files.length === 0) {
-      // A section header with nothing under it: the cursor is right, the section
-      // is just empty, so git has nothing to do.
-      notify(t('msg.emptySection'));
-      return;
-    }
-    const pending = files.filter((target) => target.section !== 'untracked');
-    if (pending.length === 0) {
-      refuse(t('msg.untrackedUnstage'));
-      return;
-    }
-    const paths = [...new Set(pending.map((target) => target.path))];
-    await unstageFiles(state.repoPath, paths);
-    await statusBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    notify(t('msg.unstagedCount', { count: paths.length }));
-  });
-
   // `alt+s` and `alt+u` are the same two operations for the whole screen, without
   // caring where the cursor is: the pair `s`/`u` next to them stays per file.
-  register('githelm.status.stageAll', async () => {
-    const editor = statusEditor();
-    if (!editor) {
-      return;
-    }
-    const state = statusBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      return;
-    }
-    const pending = state.status.entries.filter((entry) => entry.section !== 'staged');
-    if (pending.length === 0) {
-      notify(t('msg.alreadyStaged'));
-      return;
-    }
-    if (pending.some((entry) => entry.section === 'conflict')) {
-      const confirmed = await vscode.window.showWarningMessage(
-        t('msg.conflictStage'),
-        { modal: true },
-        t('action.stage')
-      );
-      if (confirmed !== t('action.stage')) {
-        return;
-      }
-    }
-    await stageAll(state.repoPath);
-    await statusBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    notify(t('msg.stagedCount', { count: pending.length }));
-  });
-
-  register('githelm.status.unstageAll', async () => {
-    const editor = statusEditor();
-    if (!editor) {
-      return;
-    }
-    const state = statusBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      return;
-    }
-    const staged = entriesOf(state.status, 'staged');
-    if (staged.length === 0) {
-      notify(t('msg.nothingToUnstage'));
-      return;
-    }
-    await unstageAll(state.repoPath);
-    await statusBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    notify(t('msg.unstagedCount', { count: staged.length }));
-  });
-
-  register('githelm.status.ignore', async () => {
-    const editor = statusEditor();
-    if (!editor) {
-      return;
-    }
-    const state = statusBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      return;
-    }
-    if (!state.initialized) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    const { resolved, files } = statusFiles(editor);
-    const paths = [...new Set(files.map((target) => target.path))];
-    if (resolved.kind === 'none') {
-      notify(t('msg.cursorNotFile'));
-      return;
-    }
-    if (paths.length === 0) {
-      // A section header with nothing under it: the cursor is right, the section
-      // is just empty, so git has nothing to do.
-      notify(t('msg.emptySection'));
-      return;
-    }
-
-    const result = await addToGitignore(state.repoPath, paths);
-    if (result.added.length > 0) {
-      notify(t('msg.ignoredCount', { count: result.added.length }));
-    } else if (result.tracked.length === 0) {
-      notify(t('msg.ignoredNothing'));
-    }
-    if (result.tracked.length > 0) {
-      warn(t('msg.ignoreTracked', { count: result.tracked.length }));
-    }
-    await statusBuffer.refresh(editor.document.uri, editor.selection.active.line);
-  });
-
-  register('githelm.status.diff', async () => {
-    const editor = statusEditor();
-    if (!editor) {
-      return;
-    }
-    const state = statusBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      return;
-    }
-    const { resolved, files } = statusFiles(editor);
-    const targets = resolved.targets;
-    const stashes = targets.filter(
-      (target): target is Extract<StatusTarget, { kind: 'stash' }> => target.kind === 'stash'
-    );
-
-    if (resolved.kind === 'none') {
-      notify(t('msg.cursorNotFile'));
-      return;
-    }
-    if (targets.length === 0) {
-      // A section header with nothing under it: the cursor is right, the section
-      // is just empty, so git has nothing to do.
-      notify(t('msg.emptySection'));
-      return;
-    }
-
-    for (const ref of new Set(stashes.map((stash) => stash.ref))) {
-      const text = await showStash(state.repoPath, ref);
-      await compareBuffer.open(state.repoPath, ref, text);
-    }
-
+  /**
+   * A stash's whole diff in the built-in editor: every file it touched, its first parent
+   * against the stash itself — the pairs `git stash show -p` prints, one multi-diff tab.
+   *
+   * Not a `^..` range: `^` alone is not a revision, so `git diff --name-only ^..` exits
+   * 128 and the key died with git's own error. The file list is the stash's, read the way
+   * its own screen reads it, so `d` on a stash row and `d` on its file list agree.
+   */
+  const openStashDiffInEditor = async (repoPath: string, ref: string): Promise<void> => {
+    const files = await stashFiles(repoPath, ref);
     if (files.length === 0) {
-      if (stashes.length === 0) {
-        notify(t('msg.forFiles'));
-      }
+      warn(t('compare.noChanges', { range: ref }));
       return;
     }
-
-    // One buffer per mode: staged and unstaged content cannot share a `git diff`
-    // call. Groups are opened in reverse so the buffer of the primary cursor
-    // (the first target resolved) ends up as the visible one.
-    const groups = new Map<DiffMode, FileTarget[]>();
-    for (const target of files) {
-      const mode: DiffMode = target.section === 'staged' ? 'staged' : 'unstaged';
-      const group = groups.get(mode);
-      if (group) {
-        group.push(target);
-      } else {
-        groups.set(mode, [target]);
-      }
-    }
-
-    let changed = false;
-    for (const [mode, group] of [...groups].reverse()) {
-      if (mode === 'unstaged') {
-        for (const target of group.filter((entry) => entry.section === 'untracked')) {
-          // Untracked files are invisible to `git diff`; adopt them as
-          // intent-to-add so they show up (and can be staged partially).
-          await addIntentToAdd(state.repoPath, target.path);
-          changed = true;
-        }
-      }
-      const paths = [...new Set(group.map((target) => target.path))];
-      await diffBuffer.open(state.repoPath, mode, paths);
-    }
-
-    if (changed) {
-      await statusBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    }
-  });
-  register('githelm.status.discard', async () => {
-    const editor = statusEditor();
-    if (!editor) {
-      return;
-    }
-    const state = statusBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      return;
-    }
-    const { resolved, files } = statusFiles(editor);
-    if (resolved.kind === 'none') {
-      notify(t('msg.cursorNotFile'));
-      return;
-    }
-    if (files.length === 0) {
-      // A section header with nothing under it: the cursor is right, the section
-      // is just empty, so git has nothing to do.
-      notify(t('msg.emptySection'));
-      return;
-    }
-
-    const plan = planDiscard(files);
-    const preview = (list: readonly string[]): string => {
-      const shown = list.slice(0, 5).join(', ');
-      return list.length > 5 ? `${shown}, … +${list.length - 5}` : shown;
-    };
-    const layers: Array<[readonly string[], MessageKey]> = [
-      [plan.conflicts, 'discard.layerConflict'],
-      [plan.staged, 'discard.layerStaged'],
-      [plan.worktree, 'discard.layerWorktree'],
-      [plan.remove, 'discard.layerNew'],
-    ];
-    const notes = layers
-      .filter(([list]) => list.length > 0)
-      .map(([list, key]) => t(key, { files: preview(list) }));
-    const confirmed = await vscode.window.showWarningMessage(
-      t('confirm.discard', { files: preview(plan.paths) }),
-      { modal: true, ...(notes.length > 0 ? { detail: notes.join('\n') } : {}) },
-      t('action.discard')
+    await openRevisionDiffs(
+      repoPath,
+      files.map((file) => file.path),
+      `${ref}^`,
+      ref,
+      ref
     );
-    if (confirmed !== t('action.discard')) {
-      return;
-    }
+  };
 
-    await discardPaths(state.repoPath, plan);
-    await statusBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    notify(t('msg.discardedCount', { count: plan.paths.length }));
-  });
-  register('githelm.status.openFile', async () => {
-    const editor = statusEditor();
-    if (!editor) {
-      return;
-    }
-    const state = statusBuffer.stateFor(editor.document.uri);
-    const target = statusBuffer.targetAt(editor.document.uri, editor.selection.active.line + 1, editor.selection.active.character);
-    if (!state || !target) {
-      notify(t('msg.cursorNotFile'));
-      return;
-    }
+  /**
+   * The commands that act on one row of the status screen, with the row passed in
+   * instead of read from the caret. The status buffer resolves the row under its
+   * cursor; the webview passes the row the user selected. Both run the same code,
+   * so they ask the same questions and delete the same things.
+   */
+  type WorktreeTarget = Extract<StatusTarget, { kind: 'worktree' }>;
+
+  const runOpenTarget = async (repo: string, target: StatusTarget): Promise<void> => {
     if (target.kind === 'init') {
-      await initRepo(state.repoPath);
+      await initRepo(repo);
       return;
     }
     if (target.kind === 'stash') {
-      await stashBuffer.open(state.repoPath, target.ref);
+      await openStashFiles(repo, target.ref);
       return;
     }
     if (target.kind === 'worktree') {
-      // Another worktree is another checkout: show its own status buffer.
-      await statusBuffer.open(target.path);
+      // Another worktree is another checkout: show its own status screen.
+      await openRepoStatus(target.path);
       return;
     }
     if (target.kind === 'file' && target.section === 'conflict') {
-      await conflictBuffer.open(state.repoPath, target.path);
+      await openConflictFile(repo, target.path);
       return;
     }
     if (target.kind !== 'file') {
       notify(t('msg.forFiles'));
       return;
     }
-    await vscode.window.showTextDocument(vscode.Uri.file(path.join(state.repoPath, target.path)), { preview: false });
-  });
-
-  register('githelm.diff.stageSelection', () => stageOrUnstageSelection('unstaged'));
-  register('githelm.diff.unstageSelection', () => stageOrUnstageSelection('staged'));
-
-  register('githelm.diff.refresh', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    if (!diffBuffer.stateFor(editor.document.uri)) {
-      warn(t('msg.notDiff'));
-      return;
-    }
-    await diffBuffer.refresh(editor.document.uri, editor.selection.active.line);
-  });
-
-  const commitFromBuffer = async (repo: string): Promise<void> => {
-    const status = await readStatus(repo);
-    const staged = entriesOf(status, 'staged');
-    if (staged.length === 0) {
-      warn(t('msg.noStaged'));
-      return;
-    }
-
-    const uri = editable.createUri('commit-message', repo);
-    const content = await editable.edit(uri, buildCommitTemplate(staged));
-    await closeIfActive(uri);
-    if (content === undefined) {
-      notify(t('msg.commitCanceled'));
-      return;
-    }
-    const message = cleanCommitMessage(content);
-    if (!message) {
-      warn(t('msg.emptyMessage'));
-      return;
-    }
-
-    const tmp = path.join(os.tmpdir(), `githelm-commit-${process.pid}-${Date.now()}.txt`);
-    fs.writeFileSync(tmp, `${message}\n`, 'utf8');
-    try {
-      const result = await git(repo, ['commit', '-F', tmp]);
-      if (result.code !== 0) {
-        throw new Error(result.stderr.trim() || result.stdout.trim() || `git commit exited ${result.code}`);
-      }
-    } finally {
-      fs.rmSync(tmp, { force: true });
-    }
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-    void vscode.window.showInformationMessage(t('msg.committed'));
+    await vscode.window.showTextDocument(vscode.Uri.file(path.join(repo, target.path)), { preview: false });
   };
 
-  register('githelm.status.commit', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    await commitFromBuffer(repo);
-  });
-
-  register('githelm.help', async () => {
-    const uri = vscode.window.activeTextEditor?.document.uri;
-    if (uri && HelpBuffer.viewOf(uri)) {
-      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
-      return;
-    }
-    const view = uri ? viewOf(uri) : 'status';
-    await helpBuffer.open(view || 'status');
-  });
-
-  register('githelm.rebase.interactive', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    const base = await vscode.window.showInputBox({
-      prompt: t('prompt.searchMode'),
-      value: 'HEAD~3',
-      ignoreFocusOut: true,
-    });
-    if (!base) {
-      return;
-    }
-    notify(t('msg.updated'));
-    const result = await runInteractiveRebase({
-      repoPath: repo,
-      base,
-      shimsDir: shimsDir(),
-      onEdit: async (request) => {
-        const name = path.basename(request.path).includes('git-rebase-todo') ? 'rebase-todo' : 'commit-message';
-        const uri = editable.createUri(name, repo);
-        const edited = await editable.edit(uri, request.content);
-        await closeIfActive(uri);
-        return edited;
-      },
-    });
-    if (result.code !== 0) {
-      throw new Error(result.stderr.trim() || `git rebase exited ${result.code}`);
-    }
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-    void vscode.window.showInformationMessage(t('msg.updated'));
-  });
-
-  register('githelm.log.open', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    await logBuffer.open(repo, false);
-  });
-
-  register('githelm.log.refresh', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || !logBuffer.stateFor(editor.document.uri)) {
-      warn(t('msg.notLog'));
-      return;
-    }
-    await logBuffer.refresh(editor.document.uri, editor.selection.active.line);
-  });
-
-  register('githelm.log.toggleAll', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || !logBuffer.stateFor(editor.document.uri)) {
-      warn(t('msg.notLog'));
-      return;
-    }
-    await logBuffer.toggleAll(editor.document.uri, editor.selection.active.line);
-    notify(t('msg.updated'));
-  });
-
-  register('githelm.log.showCommit', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = logBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      warn(t('msg.notLog'));
-      return;
-    }
-    const line = editor.selection.active.line + 1;
-    const field = logBuffer.fieldAt(editor.document.uri, line);
-    if (field) {
-      const value = await vscode.window.showInputBox({
-        prompt: t('prompt.filterValue', { field: filterHint(field) }),
-        value: state.filter[field] ?? '',
-        ignoreFocusOut: true,
-      });
-      if (value === undefined) {
-        return;
-      }
-      const next: LogFilter = { ...state.filter };
-      const writable = next as Record<string, string | undefined>;
-      if (value.trim()) {
-        writable[field] = value.trim();
-      } else {
-        delete writable[field];
-      }
-      await logBuffer.setFilter(editor.document.uri, next, line - 1);
-      return;
-    }
-    const commit = logBuffer.commitAt(editor.document.uri, line);
-    if (!commit) {
-      notify(t('msg.cursorNotCommit'));
-      return;
-    }
-    await commitBuffer.open(state.repoPath, commit.sha);
-  });
-
-  register('githelm.log.createBranch', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = logBuffer.stateFor(editor.document.uri);
-    const commit = logBuffer.commitAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !commit) {
-      notify(t('msg.cursorNotCommit'));
-      return;
-    }
-    const name = await vscode.window.showInputBox({
-      prompt: t('prompt.branchFrom', { ref: commit.shortSha }),
-      placeHolder: 'feature/x',
-      ignoreFocusOut: true,
-    });
-    if (!name || !name.trim()) {
-      return;
-    }
-    const branch = name.trim();
-    await createBranch(state.repoPath, branch, commit.sha);
-    await statusBuffer.refreshAll();
-    await logBuffer.refresh(state.uri, editor.selection.active.line);
-    await updateStatusBar();
-    notify(t('msg.branchCreated', { name: branch }));
-  });
-
-  register('githelm.log.tagCreate', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = logBuffer.stateFor(editor.document.uri);
-    const commit = logBuffer.commitAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !commit) {
-      notify(t('msg.cursorNotCommit'));
-      return;
-    }
-    await createTagAt(state.repoPath, { ref: commit.sha, shortSha: commit.shortSha });
-    // The graph prints the refs of each row, so the new tag appears on it.
-    await statusBuffer.refreshAll();
-    await logBuffer.refresh(state.uri, editor.selection.active.line);
-    await updateStatusBar();
-  });
-
-  register('githelm.log.checkout', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = logBuffer.stateFor(editor.document.uri);
-    const commit = logBuffer.commitAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !commit) {
-      notify(t('msg.cursorNotCommit'));
-      return;
-    }
-    const refs = checkoutableRefs(commit.refs);
-    if (refs.length === 0) {
-      warn(t('msg.notEditable'));
-      return;
-    }
-    const target = refs.length === 1 ? refs[0] : await vscode.window.showQuickPick(refs, { placeHolder: t('branch.pick') });
-    if (!target) {
-      return;
-    }
-    await checkoutBranch(state.repoPath, target);
-    await statusBuffer.refreshAll();
-    await logBuffer.refresh(state.uri, editor.selection.active.line);
-    await updateStatusBar();
-    notify(t('msg.checkout', { name: target }));
-  });
-
-  register('githelm.log.fixup', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = logBuffer.stateFor(editor.document.uri);
-    const commit = logBuffer.commitAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !commit) {
-      notify(t('msg.cursorNotCommit'));
-      return;
-    }
-    if (!(await hasStagedChanges(state.repoPath))) {
-      warn(t('msg.noStaged'));
-      return;
-    }
-
-    await createFixupCommit(state.repoPath, commit.sha);
-    notify(t('msg.updated'));
-
-    const base = await parentOf(state.repoPath, commit.sha);
-    try {
-      const result = await runInteractiveRebase({
-        repoPath: state.repoPath,
-        base,
-        extraArgs: ['--autosquash'],
-        shimsDir: shimsDir(),
-        onEdit: async (request) => {
-          const name = path.basename(request.path);
-          const uri = editable.createUri(
-            name.includes('git-rebase-todo') ? 'rebase-todo' : 'commit-message',
-            state.repoPath
-          );
-          const edited = await editable.edit(uri, request.content);
-          await closeIfActive(uri);
-          return edited;
-        },
-      });
-      if (result.code !== 0) {
-        throw new Error(result.stderr.trim() || `git rebase exited ${result.code}`);
-      }
-    } catch (error) {
-      if (error instanceof RebaseAbortedError) {
-        notify(t('msg.commitCanceled'));
-        await statusBuffer.refreshAll();
-        await logBuffer.refresh(state.uri, editor.selection.active.line);
-        return;
-      }
-      throw error;
-    }
-
-    await statusBuffer.refreshAll();
-    await logBuffer.refresh(state.uri, editor.selection.active.line);
-    await updateStatusBar();
-    void vscode.window.showInformationMessage(t('msg.committed'));
-  });
-
-  register('githelm.status.amend', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    const message = await headMessage(repo);
-    if (message === undefined) {
-      warn(t('msg.cursorNotCommit'));
-      return;
-    }
-
-    const uri = editable.createUri('amend-message', repo);
-    const edited = await editable.edit(uri, `${message}\n`);
-    await closeIfActive(uri);
-    if (edited === undefined) {
-      notify(t('msg.amendCanceled'));
-      return;
-    }
-    const trimmed = edited.trim();
-    if (!trimmed) {
-      warn(t('msg.emptyMessage'));
-      return;
-    }
-
-    await amendCommit(repo, trimmed);
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-    void vscode.window.showInformationMessage(t('msg.amendDone'));
-  });
-
-  register('githelm.diff.openFile', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = diffBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      warn(t('msg.notDiff'));
-      return;
-    }
-    const position = diffPosition(state.parsed, editor.selection.active.line + 1);
-    if (!position) {
-      notify(t('msg.cursorNotFile'));
-      return;
-    }
-
-    const target = vscode.Uri.file(path.join(state.repoPath, position.file.path));
-    let targetEditor: vscode.TextEditor;
-    try {
-      targetEditor = await vscode.window.showTextDocument(target, { preview: false });
-    } catch {
-      warn(t('msg.cursorNotFile'));
-      return;
-    }
-    const line = Math.min(Math.max(0, position.line - 1), Math.max(0, targetEditor.document.lineCount - 1));
-    targetEditor.selection = new vscode.Selection(line, 0, line, 0);
-    targetEditor.revealRange(new vscode.Range(line, 0, line, 0), vscode.TextEditorRevealType.InCenter);
-  });
-
-  const statusTargetFor = (): { editor: vscode.TextEditor; repo: string; target: StatusTarget } | undefined => {
-    const editor = statusEditor();
-    if (!editor) {
-      return undefined;
-    }
-    const state = statusBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      return undefined;
-    }
-    const target = statusBuffer.targetAt(editor.document.uri, editor.selection.active.line + 1, editor.selection.active.character);
-    if (!target) {
-      notify(t('msg.cursorNotEntry'));
-      return undefined;
-    }
-    return { editor, repo: state.repoPath, target };
-  };
-
-  /**
-   * The stash options of `z`, when the cursors picked no file: `--staged` or
-   * `-u`, at most one of them. Nothing picked and Enter means a plain stash;
-   * Esc cancels. The list is a checkbox list because that is the only shape VS
-   * Code offers for "choose some of these"; a second pick replaces the first,
-   * so the pair can never be combined.
-   */
-  const askStashOptions = (): Promise<StashOptions | undefined> =>
-    new Promise((resolve) => {
-      const pick = vscode.window.createQuickPick();
-      pick.title = t('prompt.stashOptions');
-      pick.placeholder = t('prompt.stashOptionsHint');
-      pick.canSelectMany = true;
-      pick.items = [
-        { label: '--staged', description: t('stash.option.staged') },
-        { label: '-u', description: t('stash.option.untracked') },
-      ];
-      let accepted = false;
-      let previous: string[] = [];
-      pick.onDidChangeSelection((items) => {
-        const labels = items.map((item) => item.label);
-        if (labels.length > 1) {
-          const added = labels.find((label) => !previous.includes(label));
-          pick.selectedItems = pick.items.filter((item) => item.label === added);
-        }
-        previous = pick.selectedItems.map((item) => item.label);
-      });
-      pick.onDidAccept(() => {
-        accepted = true;
-        const labels = pick.selectedItems.map((item) => item.label);
-        resolve({
-          ...(labels.includes('--staged') ? { staged: true } : {}),
-          ...(labels.includes('-u') ? { includeUntracked: true } : {}),
-        });
-        pick.hide();
-      });
-      pick.onDidHide(() => {
-        if (!accepted) {
-          resolve(undefined);
-        }
-        pick.dispose();
-      });
-      pick.show();
-    });
-
-  register('githelm.status.stash', async () => {
-    const editor = statusEditor();
-    if (!editor) {
-      return;
-    }
-    const state = statusBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      warn(t('msg.notStatus'));
-      return;
-    }
-    // Files under the cursors are the answer: the options are not asked for, and
-    // only those files go into the stash.
-    const { files } = statusFiles(editor);
-    const options = files.length > 0 ? {} : await askStashOptions();
-    if (options === undefined) {
-      return;
-    }
-    const message = await vscode.window.showInputBox({
-      prompt: t('prompt.stashMessage'),
-      ignoreFocusOut: true,
-    });
-    if (message === undefined) {
-      return;
-    }
-    await pushStash(state.repoPath, message, planStash(files, options));
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-    notify(t('msg.stashCreated'));
-  });
-
-  register('githelm.status.stashApply', async () => {
-    const found = statusTargetFor();
-    if (!found) {
-      return;
-    }
-    if (found.target.kind !== 'stash') {
-      notify(t('msg.cursorNotEntry'));
-      return;
-    }
-    await applyStash(found.repo, found.target.ref);
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-    notify(t('msg.stashApplied', { ref: found.target.ref }));
-  });
-
-  register('githelm.status.stashPop', async () => {
-    const found = statusTargetFor();
-    if (!found) {
-      return;
-    }
-    if (found.target.kind !== 'stash') {
-      notify(t('msg.cursorNotEntry'));
-      return;
-    }
-    await popStash(found.repo, found.target.ref);
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-    notify(t('msg.stashPopped', { ref: found.target.ref }));
-  });
-
-  /**
-   * Asks for a tag name and puts the tag on `target`, or on HEAD when there is
-   * none. Both screens share it: `t` on the status screen tags the commit under
-   * the cursor when the cursor is on one of the last commits, and `t` in the
-   * graph tags the commit the graph shows.
-   */
-  /**
-   * Asks for a name, then for a message: git makes a tag annotated as soon as it
-   * has a message, and an annotated tag is what a release tag has to be — a
-   * lightweight one is what `git push --follow-tags` silently ignores.
-   */
-  const createTagAt = async (repo: string, target?: { ref: string; shortSha: string }): Promise<void> => {
-    const name = await vscode.window.showInputBox({
-      prompt: target ? t('prompt.tagNameOn', { ref: target.shortSha }) : t('prompt.tagName'),
-      ignoreFocusOut: true,
-    });
-    if (!name || !name.trim()) {
-      return;
-    }
-    const message = await vscode.window.showInputBox({
-      prompt: t('prompt.tagMessage'),
-      ignoreFocusOut: true,
-    });
-    if (message === undefined) {
-      // Escape on the second prompt cancels the tag instead of quietly making a
-      // lightweight one the user did not ask for.
-      return;
-    }
-    await createTag(repo, name.trim(), message.trim() || undefined, target?.ref);
-    notify(t('msg.tagCreated', { name: name.trim() }));
-  };
-
-  register('githelm.status.tagCreate', async () => {
-    const editor = statusEditor();
-    if (!editor) {
-      return;
-    }
-    const state = statusBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      warn(t('msg.notStatus'));
-      return;
-    }
-    const commit = state.rendered.commitLines.get(editor.selection.active.line + 1);
-    await createTagAt(state.repoPath, commit);
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-  });
-
-  register('githelm.status.remoteAdd', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    const name = await vscode.window.showInputBox({ prompt: t('prompt.remoteName'), value: 'origin', ignoreFocusOut: true });
-    if (!name || !name.trim()) {
-      return;
-    }
-    const url = await vscode.window.showInputBox({
-      prompt: t('prompt.remoteUrl', { name: name.trim() }),
-      placeHolder: 'git@github.com:user/repo.git',
-      ignoreFocusOut: true,
-    });
-    if (!url || !url.trim()) {
-      return;
-    }
-    await addRemote(repo, name.trim(), url.trim());
-    await statusBuffer.refreshAll();
-    notify(t('msg.remoteAdded', { name: name.trim() }));
-  });
-
-  register('githelm.status.worktreeAdd', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    const suggestedPath = path.resolve(repo, '..', `${path.basename(repo)}-worktree`);
-    const worktreePath = await vscode.window.showInputBox({
-      prompt: t('prompt.worktreePath'),
-      value: suggestedPath,
-      ignoreFocusOut: true,
-    });
-    if (!worktreePath || !worktreePath.trim()) {
-      return;
-    }
-    const target = worktreePath.trim();
-    const ref = await vscode.window.showInputBox({
-      prompt: t('prompt.worktreeBranch'),
-      value: path.basename(target),
-      ignoreFocusOut: true,
-    });
-    if (!ref || !ref.trim()) {
-      return;
-    }
-    await addWorktree(repo, target, ref.trim());
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-    notify(t('msg.worktreeAdded', { path: target }));
-  });
-
-  register('githelm.status.worktreePrune', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    const removed = await pruneWorktrees(repo);
-    await statusBuffer.refreshAll();
-    notify(removed > 0 ? t('msg.worktreePruned', { count: removed }) : t('msg.worktreeNothingToPrune'));
-  });
-
-  // `Enter` shows the other worktree's status buffer; `Shift+Enter` makes it the
-  // folder of a new window, `Alt+Enter` reloads this window on it.
-  const worktreeUnderCursor = async (): Promise<StatusTarget | undefined> => {
-    const found = statusTargetFor();
-    if (!found) {
-      notify(t('msg.notStatus'));
-      return undefined;
-    }
-    if (found.target.kind !== 'worktree') {
-      // Anywhere else the opening keys keep their usual meaning: open the file.
-      await vscode.commands.executeCommand('githelm.status.openFile');
-      return undefined;
-    }
-    if (!fs.existsSync(found.target.path)) {
-      warn(t('msg.worktreeMissing', { path: found.target.path }));
-      return undefined;
-    }
-    return found.target;
-  };
-
-  register('githelm.status.worktreeOpen', async () => {
-    const worktree = await worktreeUnderCursor();
-    if (!worktree || worktree.kind !== 'worktree') {
-      return;
-    }
-    await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(worktree.path), {
-      forceNewWindow: true,
-    });
-  });
-
-  register('githelm.status.worktreeOpenHere', async () => {
-    const worktree = await worktreeUnderCursor();
-    if (!worktree || worktree.kind !== 'worktree') {
-      return;
-    }
-    if (worktree.current) {
-      notify(t('msg.worktreeAlreadyHere'));
-      return;
-    }
-    // Reloading the window drops its layout and any unsaved editors, so ask first.
-    const confirmed = await vscode.window.showWarningMessage(
-      t('confirm.openWorktreeHere', { path: worktree.path }),
-      { modal: true },
-      t('action.openHere')
-    );
-    if (confirmed !== t('action.openHere')) {
-      return;
-    }
-    // `forceReuseWindow` reopens this window on that folder instead of a new one.
-    await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(worktree.path), {
-      forceReuseWindow: true,
-    });
-  });
-
-  register('githelm.status.delete', async () => {
-    const found = statusTargetFor();
-    if (!found) {
-      return;
-    }
-    const { repo, target } = found;
-
+  const runDeleteTarget = async (repo: string, target: StatusTarget): Promise<void> => {
     if (target.kind === 'stash') {
       // A dropped stash is gone: the reflog of `stash` is not a place users look.
       const confirmed = await vscode.window.showWarningMessage(
@@ -1559,7 +1096,6 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         await removeWorktree(repo, target.path, { force: true });
       }
-      await statusBuffer.refreshAll();
       await updateStatusBar();
       notify(t('msg.worktreeRemoved', { path: target.path }));
       return;
@@ -1567,21 +1103,17 @@ export function activate(context: vscode.ExtensionContext): void {
       notify(t('msg.forFiles'));
       return;
     }
-
-    await statusBuffer.refreshAll();
     await updateStatusBar();
     notify(t('msg.deleted'));
-  });
+  };
 
-  register('githelm.status.edit', async () => {
-    const found = statusTargetFor();
-    if (!found) {
-      return;
-    }
-    const { repo, target } = found;
-
+  const runEditTarget = async (repo: string, target: StatusTarget): Promise<void> => {
     if (target.kind === 'remote') {
-      const url = await vscode.window.showInputBox({ prompt: t('prompt.remoteUrl', { name: target.name }), value: target.url, ignoreFocusOut: true });
+      const url = await vscode.window.showInputBox({
+        prompt: t('prompt.remoteUrl', { name: target.name }),
+        value: target.url,
+        ignoreFocusOut: true,
+      });
       if (!url || !url.trim() || url.trim() === target.url) {
         return;
       }
@@ -1590,19 +1122,308 @@ export function activate(context: vscode.ExtensionContext): void {
       notify(t('msg.notEditable'));
       return;
     }
-
-    await statusBuffer.refreshAll();
     notify(t('msg.updated'));
-  });
+  };
 
-  register('githelm.status.branches', async () => {
+  const runStashApply = async (repo: string, ref: string): Promise<void> => {
+    await applyStash(repo, ref);
+    await updateStatusBar();
+    notify(t('msg.stashApplied', { ref }));
+  };
+
+  const runStashPop = async (repo: string, ref: string): Promise<void> => {
+    await popStash(repo, ref);
+    await updateStatusBar();
+    notify(t('msg.stashPopped', { ref }));
+  };
+
+  const runStashDiff = async (repo: string, ref: string): Promise<void> => {
+    await openStashDiffInEditor(repo, ref);
+  };
+
+  const runWorktreeWindow = async (target: WorktreeTarget): Promise<void> => {
+    if (!fs.existsSync(target.path)) {
+      warn(t('msg.worktreeMissing', { path: target.path }));
+      return;
+    }
+    await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(target.path), {
+      forceNewWindow: true,
+    });
+  };
+
+  const runWorktreeHere = async (target: WorktreeTarget): Promise<void> => {
+    if (!fs.existsSync(target.path)) {
+      warn(t('msg.worktreeMissing', { path: target.path }));
+      return;
+    }
+    if (target.current) {
+      notify(t('msg.worktreeAlreadyHere'));
+      return;
+    }
+    // Reloading the window drops its layout and any unsaved editors, so ask first.
+    const confirmed = await vscode.window.showWarningMessage(
+      t('confirm.openWorktreeHere', { path: target.path }),
+      { modal: true },
+      t('action.openHere')
+    );
+    if (confirmed !== t('action.openHere')) {
+      return;
+    }
+    // `forceReuseWindow` reopens this window on that folder instead of a new one.
+    await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(target.path), {
+      forceReuseWindow: true,
+    });
+  };
+
+  const runRemoteAdd = async (repo: string): Promise<void> => {
+    const name = await vscode.window.showInputBox({ prompt: t('prompt.remoteName'), value: 'origin', ignoreFocusOut: true });
+    if (!name || !name.trim()) {
+      return;
+    }
+    const url = await vscode.window.showInputBox({
+      prompt: t('prompt.remoteUrl', { name: name.trim() }),
+      placeHolder: 'git@github.com:user/repo.git',
+      ignoreFocusOut: true,
+    });
+    if (!url || !url.trim()) {
+      return;
+    }
+    await addRemote(repo, name.trim(), url.trim());
+    notify(t('msg.remoteAdded', { name: name.trim() }));
+  };
+
+  const runWorktreeAdd = async (repo: string): Promise<void> => {
+    const suggestedPath = path.resolve(repo, '..', `${path.basename(repo)}-worktree`);
+    const worktreePath = await vscode.window.showInputBox({
+      prompt: t('prompt.worktreePath'),
+      value: suggestedPath,
+      ignoreFocusOut: true,
+    });
+    if (!worktreePath || !worktreePath.trim()) {
+      return;
+    }
+    const target = worktreePath.trim();
+    const ref = await vscode.window.showInputBox({
+      prompt: t('prompt.worktreeBranch'),
+      value: path.basename(target),
+      ignoreFocusOut: true,
+    });
+    if (!ref || !ref.trim()) {
+      return;
+    }
+    await addWorktree(repo, target, ref.trim());
+    await updateStatusBar();
+    notify(t('msg.worktreeAdded', { path: target }));
+  };
+
+  const runWorktreePrune = async (repo: string): Promise<void> => {
+    const removed = await pruneWorktrees(repo);
+    notify(removed > 0 ? t('msg.worktreePruned', { count: removed }) : t('msg.worktreeNothingToPrune'));
+  };
+
+  const commitFromBuffer = async (repo: string): Promise<void> => {
+    const status = await readStatus(repo);
+    const staged = entriesOf(status, 'staged');
+    if (staged.length === 0) {
+      warn(t('msg.noStaged'));
+      return;
+    }
+
+    const uri = editable.createUri('commit-message', repo);
+    const content = await editable.edit(uri, buildCommitTemplate(staged));
+    await closeIfActive(uri);
+    if (content === undefined) {
+      notify(t('msg.commitCanceled'));
+      return;
+    }
+    const message = cleanCommitMessage(content);
+    if (!message) {
+      warn(t('msg.emptyMessage'));
+      return;
+    }
+
+    const tmp = path.join(os.tmpdir(), `githelm-commit-${process.pid}-${Date.now()}.txt`);
+    fs.writeFileSync(tmp, `${message}\n`, 'utf8');
+    try {
+      const result = await git(repo, ['commit', '-F', tmp]);
+      if (result.code !== 0) {
+        throw new Error(result.stderr.trim() || result.stdout.trim() || `git commit exited ${result.code}`);
+      }
+    } finally {
+      fs.rmSync(tmp, { force: true });
+    }
+    await updateStatusBar();
+    void vscode.window.showInformationMessage(t('msg.committed'));
+  };
+
+  register('githelm.rebase.interactive', async () => {
     const repo = await resolveRepo();
     if (!repo) {
       warn(t('msg.noRepo'));
       return;
     }
-    await branchesBuffer.open(repo, false);
+    const base = await vscode.window.showInputBox({
+      prompt: t('prompt.searchMode'),
+      value: 'HEAD~3',
+      ignoreFocusOut: true,
+    });
+    if (!base) {
+      return;
+    }
+    notify(t('msg.updated'));
+    const result = await runInteractiveRebase({
+      repoPath: repo,
+      base,
+      shimsDir: shimsDir(),
+      onEdit: async (request) => {
+        const name = path.basename(request.path).includes('git-rebase-todo') ? 'rebase-todo' : 'commit-message';
+        const uri = editable.createUri(name, repo);
+        const edited = await editable.edit(uri, request.content);
+        await closeIfActive(uri);
+        return edited;
+      },
+    });
+    if (result.code !== 0) {
+      throw new Error(result.stderr.trim() || `git rebase exited ${result.code}`);
+    }
+    await updateStatusBar();
+    void vscode.window.showInformationMessage(t('msg.updated'));
   });
+
+  register('githelm.log.open', async () => {
+    const repo = await resolveRepo();
+    if (!repo) {
+      warn(t('msg.noRepo'));
+      return;
+    }
+    await logWebview.show(repo);
+    await updateStatusBar();
+  });
+
+  const runAmend = async (repo: string): Promise<void> => {
+    const message = await headMessage(repo);
+    if (message === undefined) {
+      warn(t('msg.cursorNotCommit'));
+      return;
+    }
+
+    const uri = editable.createUri('amend-message', repo);
+    const edited = await editable.edit(uri, `${message}\n`);
+    await closeIfActive(uri);
+    if (edited === undefined) {
+      notify(t('msg.amendCanceled'));
+      return;
+    }
+    const trimmed = edited.trim();
+    if (!trimmed) {
+      warn(t('msg.emptyMessage'));
+      return;
+    }
+
+    await amendCommit(repo, trimmed);
+    await updateStatusBar();
+    void vscode.window.showInformationMessage(t('msg.amendDone'));
+  };
+
+  /**
+   * The stash options of `z`, when the cursors picked no file: `--staged` or
+   * `-u`, at most one of them. Nothing picked and Enter means a plain stash;
+   * Esc cancels. The list is a checkbox list because that is the only shape VS
+   * Code offers for "choose some of these"; a second pick replaces the first,
+   * so the pair can never be combined.
+   */
+  const askStashOptions = (): Promise<StashOptions | undefined> =>
+    new Promise((resolve) => {
+      const pick = vscode.window.createQuickPick();
+      pick.title = t('prompt.stashOptions');
+      pick.placeholder = t('prompt.stashOptionsHint');
+      pick.canSelectMany = true;
+      pick.items = [
+        { label: '--staged', description: t('stash.option.staged') },
+        { label: '-u', description: t('stash.option.untracked') },
+      ];
+      let accepted = false;
+      let previous: string[] = [];
+      pick.onDidChangeSelection((items) => {
+        const labels = items.map((item) => item.label);
+        if (labels.length > 1) {
+          const added = labels.find((label) => !previous.includes(label));
+          pick.selectedItems = pick.items.filter((item) => item.label === added);
+        }
+        previous = pick.selectedItems.map((item) => item.label);
+      });
+      pick.onDidAccept(() => {
+        accepted = true;
+        const labels = pick.selectedItems.map((item) => item.label);
+        resolve({
+          ...(labels.includes('--staged') ? { staged: true } : {}),
+          ...(labels.includes('-u') ? { includeUntracked: true } : {}),
+        });
+        pick.hide();
+      });
+      pick.onDidHide(() => {
+        if (!accepted) {
+          resolve(undefined);
+        }
+        pick.dispose();
+      });
+      pick.show();
+    });
+
+  /**
+   * `z`: stash the files the caller names, or — with none — ask for the options and
+   * stash the whole working tree. The buffer passes the files under its cursors, the
+   * panel the rows it has selected, so both screens ask the same questions in the
+   * same order and report in the same place.
+   */
+  const runStash = async (repo: string, selected: readonly StashCandidate[]): Promise<void> => {
+    const options = selected.length > 0 ? {} : await askStashOptions();
+    if (options === undefined) {
+      return;
+    }
+    const message = await vscode.window.showInputBox({
+      prompt: t('prompt.stashMessage'),
+      ignoreFocusOut: true,
+    });
+    if (message === undefined) {
+      return;
+    }
+    await pushStash(repo, message, planStash(selected, options));
+    await updateStatusBar();
+    notify(t('msg.stashCreated'));
+  };
+
+  /**
+   * Asks for a tag name and puts the tag on `target`, or on HEAD when there is
+   * none. Both screens share it: `t` on the status screen tags the commit under
+   * the cursor when the cursor is on one of the last commits, and `t` in the
+   * graph tags the commit the graph shows.
+   */
+  /**
+   * Asks for a name, then for a message: git makes a tag annotated as soon as it
+   * has a message, and an annotated tag is what a release tag has to be — a
+   * lightweight one is what `git push --follow-tags` silently ignores.
+   */
+  const createTagAt = async (repo: string, target?: { ref: string; shortSha: string }): Promise<void> => {
+    const name = await vscode.window.showInputBox({
+      prompt: target ? t('prompt.tagNameOn', { ref: target.shortSha }) : t('prompt.tagName'),
+      ignoreFocusOut: true,
+    });
+    if (!name || !name.trim()) {
+      return;
+    }
+    const message = await vscode.window.showInputBox({
+      prompt: t('prompt.tagMessage'),
+      ignoreFocusOut: true,
+    });
+    if (message === undefined) {
+      // Escape on the second prompt cancels the tag instead of quietly making a
+      // lightweight one the user did not ask for.
+      return;
+    }
+    await createTag(repo, name.trim(), message.trim() || undefined, target?.ref);
+    notify(t('msg.tagCreated', { name: name.trim() }));
+  };
 
   register('githelm.branches.open', async () => {
     const repo = await resolveRepo();
@@ -1610,258 +1431,593 @@ export function activate(context: vscode.ExtensionContext): void {
       warn(t('msg.noRepo'));
       return;
     }
-    await branchesBuffer.open(repo, false);
-  });
-
-  register('githelm.branches.checkout', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = branchesBuffer.stateFor(editor.document.uri);
-    const entry = branchesBuffer.branchAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !entry) {
-      notify(t('msg.cursorNotBranch'));
-      return;
-    }
-    await checkoutBranch(state.repoPath, entry.name);
-    await branchesBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    await statusBuffer.refreshAll();
+    await branchesWebview.show(repo);
     await updateStatusBar();
-    notify(t('msg.checkout', { name: entry.name }));
   });
 
-  register('githelm.branches.create', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
+  // ---------- branches: the keys, run from the cursor or from the panel ----------
+
+  /** Re-reads an open screen buffer without moving its cursor. */
+  /** Re-reads every screen that is on screen: the panels follow the same events. */
+  const refreshScreens = async (): Promise<void> => {
+    await Promise.all(screenPanels.map((panel) => panel.refreshIfVisible()));
+  };
+
+  /** The branch a panel row names, looked up again in the repository. */
+  const branchFromIds = async (repo: string, ids: readonly string[]): Promise<BranchEntry | undefined> => {
+    const id = ids[0];
+    const name = id?.startsWith('branch:') ? id.slice('branch:'.length) : undefined;
+    if (!name) {
+      return undefined;
     }
-    const state = branchesBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      return;
+    return (await listBranchEntries(repo, true)).find((entry) => entry.name === name);
+  };
+
+  /** The tag a panel row names, looked up again in the repository. */
+  const tagFromIds = async (repo: string, ids: readonly string[]): Promise<TagEntry | undefined> => {
+    const id = ids[0];
+    const name = id?.startsWith('tag:') ? id.slice('tag:'.length) : undefined;
+    if (!name) {
+      return undefined;
     }
-    const entry = branchesBuffer.branchAt(editor.document.uri, editor.selection.active.line + 1);
-    const name = await vscode.window.showInputBox({
-      prompt: t('prompt.branchFrom', { ref: entry?.name ?? 'HEAD' }),
-      placeHolder: 'feature/x',
-      ignoreFocusOut: true,
+    return (await listTags(repo)).find((tag) => tag.name === name);
+  };
+
+  /**
+   * The branches a compare names, the first two distinct ones, looked up in the
+   * repository again. `d` takes one row (against HEAD) or two (against each other), the
+   * same way the history screen does.
+   */
+  const branchesFromIds = async (repo: string, ids: readonly string[]): Promise<BranchEntry[]> => {
+    const names = [
+      ...new Set(ids.filter((id) => id.startsWith('branch:')).map((id) => id.slice('branch:'.length))),
+    ].slice(0, 2);
+    if (names.length === 0) {
+      return [];
+    }
+    const entries = await listBranchEntries(repo, true);
+    return names.map((name) => entries.find((entry) => entry.name === name)).filter((entry): entry is BranchEntry => !!entry);
+  };
+
+  /**
+   * The six ways to compare two commits or branches, asked the way the buffer asks it.
+   * The list itself lives in `git/compare.ts`, so the panels offer the same six in the
+   * same order and with the same wording.
+   */
+  const pickCompare = async (a: string, b: string): Promise<CompareChoice | undefined> => {
+    const picked = await vscode.window.showQuickPick(compareChoices(), {
+      placeHolder: t('compare.pick', { a, b }),
     });
-    if (!name || !name.trim()) {
-      return;
-    }
-    await createBranch(state.repoPath, name.trim(), entry?.name);
-    await branchesBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-    notify(t('msg.branchCreated', { name: name.trim() }));
-  });
+    return picked?.value;
+  };
 
-  register('githelm.branches.rename', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
+  /**
+   * A compare asked by a screen: `diff …` opens the files of the range in the editor's
+   * diff, `log …` opens the history buffer on the range. Both screens ask the questions
+   * and then hand the answer here, so the history and the branches screens cannot answer
+   * `d` differently.
+   */
+  const openCompareBuffers = async (
+    repo: string,
+    sides: { a: string; b: string; aLabel: string; bLabel: string },
+    choice: CompareChoice
+  ): Promise<void> => {
+    const plan = await planCompare(repo, choice, sides.a, sides.b, sides.aLabel, sides.bLabel);
+    if (choiceShowsDiff(choice)) {
+      await openCompareInEditor(repo, plan.range, plan.diffLeft, plan.diffRight, plan.label);
       return;
     }
-    const state = branchesBuffer.stateFor(editor.document.uri);
-    const entry = branchesBuffer.branchAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !entry) {
+    notify(t('compare.noChanges', { range: plan.label }));
+  };
+
+  /**
+   * One key of the branches screen, with the branch named instead of found under the
+   * cursor. This is the buffer command: the same guards, the same questions and the
+   * same notices, so the panel cannot drift from the text screen.
+   */
+  const runBranch = async (action: ScreenAction, repo: string, ids: readonly string[]): Promise<void> => {
+    const entry = await branchFromIds(repo, ids);
+    // `n` names a new branch and works with no row at all, `d` compares one row or two;
+    // the rest act on the row under the cursor.
+    if (action !== 'create' && action !== 'compare' && !entry) {
       notify(t('msg.cursorNotBranch'));
       return;
     }
-    if (entry.isRemote) {
-      refuse(t('msg.branchRenamedRemote'));
-      return;
-    }
-    const name = await vscode.window.showInputBox({ prompt: t('prompt.branchRename'), value: entry.name, ignoreFocusOut: true });
-    if (!name || !name.trim() || name.trim() === entry.name) {
-      return;
-    }
-    await renameBranch(state.repoPath, entry.name, name.trim());
-    await branchesBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    notify(t('msg.branchRenamed', { name: name.trim() }));
-  });
-
-  register('githelm.branches.delete', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = branchesBuffer.stateFor(editor.document.uri);
-    const entry = branchesBuffer.branchAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !entry) {
-      notify(t('msg.cursorNotBranch'));
-      return;
-    }
-    if (entry.current) {
-      refuse(t('msg.branchDeleteCurrent'));
-      return;
-    }
-    if (entry.isRemote) {
-      notify(t('msg.branchDeleteRemoteHint'));
-      return;
-    }
-    const confirmed = await vscode.window.showWarningMessage(t('confirm.deleteBranch', { name: entry.name }), { modal: true }, t('action.delete'));
-    if (confirmed !== t('action.delete')) {
-      return;
-    }
-    let force = false;
-    try {
-      await deleteBranch(state.repoPath, entry.name, false);
-    } catch {
-      const forced = await vscode.window.showWarningMessage(
-        t('msg.branchNotMerged', { name: entry.name }),
-        { modal: true },
-        t('msg.forceDelete')
-      );
-      if (forced !== t('msg.forceDelete')) {
+    switch (action) {
+      case 'checkout': {
+        if (!entry) {
+          return;
+        }
+        await checkoutBranch(repo, entry.name);
+        await refreshScreens();
+        await updateStatusBar();
+        notify(t('msg.checkout', { name: entry.name }));
         return;
       }
-      force = true;
+      case 'create': {
+        const from = entry?.name;
+        const name = await vscode.window.showInputBox({
+          prompt: t('prompt.branchFrom', { ref: from ?? 'HEAD' }),
+          placeHolder: 'feature/x',
+          ignoreFocusOut: true,
+        });
+        if (!name || !name.trim()) {
+          return;
+        }
+        await createBranch(repo, name.trim(), from);
+        await refreshScreens();
+        await updateStatusBar();
+        notify(t('msg.branchCreated', { name: name.trim() }));
+        return;
+      }
+      case 'rename': {
+        if (!entry) {
+          return;
+        }
+        if (entry.isRemote) {
+          refuse(t('msg.branchRenamedRemote'));
+          return;
+        }
+        const name = await vscode.window.showInputBox({ prompt: t('prompt.branchRename'), value: entry.name, ignoreFocusOut: true });
+        if (!name || !name.trim() || name.trim() === entry.name) {
+          return;
+        }
+        await renameBranch(repo, entry.name, name.trim());
+        await refreshScreens();
+        notify(t('msg.branchRenamed', { name: name.trim() }));
+        return;
+      }
+      case 'upstream': {
+        if (!entry) {
+          return;
+        }
+        const value = await vscode.window.showInputBox({
+          prompt: t('prompt.upstream', { name: entry.name }),
+          value: `origin/${entry.name}`,
+          ignoreFocusOut: true,
+        });
+        if (!value || !value.trim()) {
+          return;
+        }
+        await setUpstream(repo, entry.name, value.trim());
+        await refreshScreens();
+        notify(`Upstream: ${value.trim()}`);
+        return;
+      }
+      case 'remove': {
+        if (!entry) {
+          return;
+        }
+        if (entry.current) {
+          refuse(t('msg.branchDeleteCurrent'));
+          return;
+        }
+        if (entry.isRemote) {
+          notify(t('msg.branchDeleteRemoteHint'));
+          return;
+        }
+        const confirmed = await vscode.window.showWarningMessage(
+          t('confirm.deleteBranch', { name: entry.name }),
+          { modal: true },
+          t('action.delete')
+        );
+        if (confirmed !== t('action.delete')) {
+          return;
+        }
+        try {
+          await deleteBranch(repo, entry.name, false);
+        } catch {
+          const forced = await vscode.window.showWarningMessage(
+            t('msg.branchNotMerged', { name: entry.name }),
+            { modal: true },
+            t('msg.forceDelete')
+          );
+          if (forced !== t('msg.forceDelete')) {
+            return;
+          }
+          await deleteBranch(repo, entry.name, true);
+        }
+        await refreshScreens();
+        notify(t('msg.branchDeleted', { name: entry.name }));
+        return;
+      }
+      case 'removeRemote': {
+        if (!entry) {
+          return;
+        }
+        const slash = entry.name.indexOf('/');
+        const remote = entry.isRemote && slash > 0 ? entry.name.slice(0, slash) : await pickRemote(repo);
+        const branch = entry.isRemote && slash > 0 ? entry.name.slice(slash + 1) : entry.name;
+        if (!remote) {
+          return;
+        }
+        const confirmed = await vscode.window.showWarningMessage(
+          t('confirm.deleteRemoteBranch', { name: entry.name }),
+          { modal: true },
+          t('action.delete')
+        );
+        if (confirmed !== t('action.delete')) {
+          return;
+        }
+        await deleteRemoteBranch(repo, remote, branch);
+        await refreshScreens();
+        notify(t('msg.deleted'));
+        return;
+      }
+      case 'merge': {
+        if (!entry) {
+          return;
+        }
+        if (entry.current) {
+          notify(t('msg.notEditable'));
+          return;
+        }
+        try {
+          await mergeRef(repo, entry.name);
+          notify(t('msg.merged', { name: entry.name }));
+        } catch (error) {
+          throw error;
+        }
+        await refreshScreens();
+        await updateStatusBar();
+        return;
+      }
+      case 'reset': {
+        if (!entry) {
+          return;
+        }
+        const mode = await pickResetMode();
+        if (!mode || !(await confirmReset(mode))) {
+          return;
+        }
+        await resetTo(repo, mode, entry.name);
+        await refreshScreens();
+        await updateStatusBar();
+        notify(t('msg.resetDone', { mode, target: entry.name }));
+        return;
+      }
+      case 'compare': {
+        // `d`: one row is compared with HEAD, two rows with each other — the same two
+        // sides the history screen compares, only named by branch instead of by commit.
+        const branches = await branchesFromIds(repo, ids);
+        if (branches.length === 0) {
+          notify(t('compare.needRefs'));
+          return;
+        }
+        const head = await headSha(repo);
+        const left = await refTip(repo, branches[0].name);
+        const right = branches[1] ? await refTip(repo, branches[1].name) : head;
+        if (!left || !right) {
+          notify(t('compare.needRefs'));
+          return;
+        }
+        const rightLabel = branches[1] ? branches[1].name : 'HEAD';
+        const picked = await pickCompare(branches[0].name, rightLabel);
+        if (!picked) {
+          return;
+        }
+        await openCompareBuffers(repo, { a: left, b: right, aLabel: branches[0].name, bLabel: rightLabel }, picked);
+        return;
+      }
+      default:
+        return;
     }
-    if (force) {
-      await deleteBranch(state.repoPath, entry.name, true);
-    }
-    await branchesBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    notify(t('msg.branchDeleted', { name: entry.name }));
-  });
+  };
 
-  register('githelm.branches.upstream', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
+  /**
+   * One key of the tags screen, the same way: `enter` opens the tagged commit in the
+   * commit buffer, `e` still confirms before moving a tag, `U`/`D` still pick a remote.
+   */
+  const runTag = async (action: ScreenAction, repo: string, ids: readonly string[]): Promise<void> => {
+    const tag = await tagFromIds(repo, ids);
+    if (action !== 'create' && !tag) {
+      notify(t('msg.cursorNotTag'));
       return;
     }
-    const state = branchesBuffer.stateFor(editor.document.uri);
-    const entry = branchesBuffer.branchAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !entry) {
-      notify(t('msg.cursorNotBranch'));
-      return;
+    switch (action) {
+      case 'show': {
+        if (!tag) {
+          return;
+        }
+        await openCommitView(repo, tag.name);
+        return;
+      }
+      case 'create': {
+        await createTagAt(repo);
+        await refreshScreens();
+        return;
+      }
+      case 'move': {
+        if (!tag) {
+          return;
+        }
+        const confirmed = await vscode.window.showWarningMessage(
+          t('confirm.moveTag', { name: tag.name }),
+          { modal: true },
+          t('action.move')
+        );
+        if (confirmed !== t('action.move')) {
+          return;
+        }
+        await moveTag(repo, tag.name);
+        await refreshScreens();
+        notify(t('msg.updated'));
+        return;
+      }
+      case 'push': {
+        if (!tag) {
+          return;
+        }
+        const remote = await pickRemote(repo);
+        if (!remote) {
+          return;
+        }
+        // Asked before the confirmation so the question can say what is about to be
+        // overwritten — and so the push can lease against exactly that value.
+        const onRemote = await remoteTag(repo, remote, tag.name);
+        const moved = onRemote !== undefined && !onRemote.commit.startsWith(tag.sha);
+        const confirmed = await vscode.window.showWarningMessage(
+          moved
+            ? t('confirm.pushTagMoved', {
+                name: tag.name,
+                remote,
+                remoteSha: onRemote.commit.slice(0, 7),
+                localSha: tag.sha,
+              })
+            : t('confirm.pushTag', { name: tag.name, remote }),
+          { modal: true },
+          t('action.push')
+        );
+        if (confirmed !== t('action.push')) {
+          return;
+        }
+        await pushTag(repo, remote, tag.name);
+        await refreshScreens();
+        notify(t('msg.tagPushed', { name: tag.name, remote }));
+        return;
+      }
+      case 'remove': {
+        if (!tag) {
+          return;
+        }
+        const confirmed = await vscode.window.showWarningMessage(
+          t('confirm.deleteTag', { name: tag.name }),
+          { modal: true },
+          t('action.delete')
+        );
+        if (confirmed !== t('action.delete')) {
+          return;
+        }
+        await deleteTag(repo, tag.name);
+        await refreshScreens();
+        notify(t('msg.deleted'));
+        return;
+      }
+      case 'removeRemote': {
+        if (!tag) {
+          return;
+        }
+        const remote = await pickRemote(repo);
+        if (!remote) {
+          return;
+        }
+        const confirmed = await vscode.window.showWarningMessage(
+          t('confirm.deleteRemoteTag', { name: tag.name, remote }),
+          { modal: true },
+          t('action.delete')
+        );
+        if (confirmed !== t('action.delete')) {
+          return;
+        }
+        await deleteRemoteTag(repo, remote, tag.name);
+        await refreshScreens();
+        notify(t('msg.tagDeletedRemote', { name: tag.name, remote }));
+        return;
+      }
+      default:
+        return;
     }
-    const value = await vscode.window.showInputBox({
-      prompt: t('prompt.upstream', { name: entry.name }),
-      value: `origin/${entry.name}`,
-      ignoreFocusOut: true,
-    });
-    if (!value || !value.trim()) {
-      return;
-    }
-    await setUpstream(state.repoPath, entry.name, value.trim());
-    await branchesBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    notify(`Upstream: ${value.trim()}`);
-  });
+  };
 
-  register('githelm.branches.toggleRemote', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    if (!branchesBuffer.stateFor(editor.document.uri)) {
-      warn(t('msg.notBranches'));
-      return;
-    }
-    const show = await branchesBuffer.toggleRemote(editor.document.uri, editor.selection.active.line);
-    notify(show ? t('msg.remotesShown') : t('msg.remotesHidden'));
-  });
+  /** The commit a panel row names, looked up again in the repository. */
+  const commitFromIds = async (repo: string, ids: readonly string[]): Promise<LogCommit | undefined> => {
+    const id = ids[0];
+    const sha = id?.startsWith('commit:') ? id.slice('commit:'.length) : undefined;
+    return sha ? commitBySha(repo, sha) : undefined;
+  };
 
-  register('githelm.branches.refresh', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
+  /**
+   * One key of the history screen, with the commits named instead of found under the
+   * cursor. This is the buffer command: the same guards, the same questions and the same
+   * notices, so the panel cannot drift from the text screen.
+   *
+   * The keys that only change what the screen shows (`a`, `s`, `x`, and the filters) are
+   * not here: each reading of the history keeps its own, which is why the buffer's `a`
+   * and the panel's `a` do not fight over one flag.
+   */
+  const runLog = async (action: ScreenAction, repo: string, ids: readonly string[]): Promise<void> => {
+    const commit = await commitFromIds(repo, ids);
+    if (action !== 'compare' && !commit) {
+      notify(t('msg.cursorNotCommit'));
       return;
     }
-    if (!branchesBuffer.stateFor(editor.document.uri)) {
-      warn(t('msg.notBranches'));
+    if (!commit) {
       return;
     }
-    await branchesBuffer.refresh(editor.document.uri, editor.selection.active.line);
-  });
+    /** The status screen after a history action: every command ends the same way. */
+    const afterChange = async (): Promise<void> => {
+      await updateStatusBar();
+    };
 
+    switch (action) {
+      case 'show': {
+        await openCommitView(repo, commit.sha);
+        return;
+      }
+      case 'create': {
+        const name = await vscode.window.showInputBox({
+          prompt: t('prompt.branchFrom', { ref: commit.shortSha }),
+          placeHolder: 'feature/x',
+          ignoreFocusOut: true,
+        });
+        if (!name || !name.trim()) {
+          return;
+        }
+        const branch = name.trim();
+        await createBranch(repo, branch, commit.sha);
+        await afterChange();
+        notify(t('msg.branchCreated', { name: branch }));
+        return;
+      }
+      case 'tag': {
+        await createTagAt(repo, { ref: commit.sha, shortSha: commit.shortSha });
+        // The graph prints the refs of each row, so the new tag appears on it.
+        await afterChange();
+        return;
+      }
+      case 'checkout': {
+        const refs = checkoutableRefs(commit.refs);
+        if (refs.length === 0) {
+          warn(t('msg.notEditable'));
+          return;
+        }
+        const target = refs.length === 1 ? refs[0] : await vscode.window.showQuickPick(refs, { placeHolder: t('branch.pick') });
+        if (!target) {
+          return;
+        }
+        await checkoutBranch(repo, target);
+        await afterChange();
+        notify(t('msg.checkout', { name: target }));
+        return;
+      }
+      case 'cherryPick': {
+        await cherryPick(repo, commit.sha);
+        await afterChange();
+        notify(`Cherry-pick ${commit.shortSha}`);
+        return;
+      }
+      case 'revert': {
+        // A revert is a new commit: quote what is being undone before doing it.
+        // A merge commit has no single inverse, so git needs the mainline parent.
+        let mainline: number | undefined;
+        if (commit.parents.length > 1) {
+          const picked = await vscode.window.showQuickPick(
+            commit.parents.map((parent, index) => ({
+              label: `-m ${index + 1}  ${parent.slice(0, 7)}`,
+              description: index === 0 ? t('revert.firstParent') : t('revert.otherParent'),
+              value: index + 1,
+            })),
+            { placeHolder: t('revert.pickMainline', { sha: commit.shortSha }) }
+          );
+          if (!picked) {
+            return;
+          }
+          mainline = picked.value;
+        }
+        const confirmed = await vscode.window.showWarningMessage(
+          t('confirm.revert', { sha: commit.shortSha, subject: commit.subject }),
+          { modal: true },
+          t('action.revert')
+        );
+        if (!confirmed) {
+          return;
+        }
+        try {
+          await revertCommit(repo, commit.sha, mainline);
+        } catch (error) {
+          // A conflict leaves the revert half-done: show the files, keep the error.
+          await afterChange();
+          throw error;
+        }
+        await afterChange();
+        notify(t('msg.reverted', { sha: commit.shortSha }));
+        return;
+      }
+      case 'fixup': {
+        if (!(await hasStagedChanges(repo))) {
+          warn(t('msg.noStaged'));
+          return;
+        }
+        await createFixupCommit(repo, commit.sha);
+        notify(t('msg.updated'));
+        const base = await parentOf(repo, commit.sha);
+        try {
+          const result = await runInteractiveRebase({
+            repoPath: repo,
+            base,
+            extraArgs: ['--autosquash'],
+            shimsDir: shimsDir(),
+            onEdit: async (request) => {
+              const name = path.basename(request.path);
+              const uri = editable.createUri(
+                name.includes('git-rebase-todo') ? 'rebase-todo' : 'commit-message',
+                repo
+              );
+              const edited = await editable.edit(uri, request.content);
+              await closeIfActive(uri);
+              return edited;
+            },
+          });
+          if (result.code !== 0) {
+            throw new Error(result.stderr.trim() || `git rebase exited ${result.code}`);
+          }
+        } catch (error) {
+          if (error instanceof RebaseAbortedError) {
+            notify(t('msg.commitCanceled'));
+            await afterChange();
+            return;
+          }
+          throw error;
+        }
+        await afterChange();
+        void vscode.window.showInformationMessage(t('msg.committed'));
+        return;
+      }
+      case 'reset': {
+        const mode = await pickResetMode();
+        if (!mode || !(await confirmReset(mode))) {
+          return;
+        }
+        await resetTo(repo, mode, commit.sha);
+        await afterChange();
+        notify(t('msg.resetDone', { mode, target: commit.shortSha }));
+        return;
+      }
+      case 'compare': {
+        // One row compares the commit with HEAD, two rows compare with each other.
+        const commits = (
+          await Promise.all(ids.map((id) => commitFromIds(repo, [id])))
+        ).filter((entry): entry is LogCommit => entry !== undefined);
+        if (commits.length === 0) {
+          notify(t('compare.needCommits'));
+          return;
+        }
+        const head = await headSha(repo);
+        const left = commits[0].sha;
+        const right = commits.length > 1 ? commits[1].sha : head;
+        const rightLabel = commits.length > 1 ? commits[1].shortSha : 'HEAD';
+        const picked = await pickCompare(commits[0].shortSha, rightLabel);
+        if (!picked) {
+          return;
+        }
+        await openCompareBuffers(
+          repo,
+          { a: left, b: right, aLabel: commits[0].shortSha, bLabel: rightLabel },
+          picked
+        );
+        return;
+      }
+      default:
+        return;
+    }
+  };
+
+  // `n` in the branches buffer works from HEAD too, so it needs the repository rather
+  // than a row: the branch under the cursor is the starting point when there is one.
+  // `shift+r` and `r` are the buffer's own display state, so they stay here: the
+  // panel keeps the same two keys and redraws itself instead.
   // `/` is navigation, not a second filter UI: the filter rows live in the
   // buffer header and are edited in place, so `/` just jumps to them.
-  register('githelm.log.search', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = logBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      warn(t('msg.notLog'));
-      return;
-    }
-    const firstField = [...state.fieldLines.keys()][0];
-    if (!firstField) {
-      return;
-    }
-    const line = Math.max(0, firstField - 1);
-    editor.selection = new vscode.Selection(line, 0, line, 0);
-    editor.revealRange(new vscode.Range(line, 0, line, 0), vscode.TextEditorRevealType.InCenter);
-  });
-
-  register('githelm.log.cherryPick', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = logBuffer.stateFor(editor.document.uri);
-    const commit = logBuffer.commitAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !commit) {
-      notify(t('msg.cursorNotCommit'));
-      return;
-    }
-    await cherryPick(state.repoPath, commit.sha);
-    await statusBuffer.refreshAll();
-    await logBuffer.refresh(state.uri, editor.selection.active.line);
-    await updateStatusBar();
-    notify(`Cherry-pick ${commit.shortSha}`);
-  });
-
-  register('githelm.log.revert', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = logBuffer.stateFor(editor.document.uri);
-    const commit = logBuffer.commitAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !commit) {
-      notify(t('msg.cursorNotCommit'));
-      return;
-    }
-    // A revert is a new commit: quote what is being undone before doing it.
-    // A merge commit has no single inverse, so git needs the mainline parent.
-    let mainline: number | undefined;
-    if (commit.parents.length > 1) {
-      const picked = await vscode.window.showQuickPick(
-        commit.parents.map((parent, index) => ({
-          label: `-m ${index + 1}  ${parent.slice(0, 7)}`,
-          description: index === 0 ? t('revert.firstParent') : t('revert.otherParent'),
-          value: index + 1,
-        })),
-        { placeHolder: t('revert.pickMainline', { sha: commit.shortSha }) }
-      );
-      if (!picked) {
-        return;
-      }
-      mainline = picked.value;
-    }
-    const confirmed = await vscode.window.showWarningMessage(
-      t('confirm.revert', { sha: commit.shortSha, subject: commit.subject }),
-      { modal: true },
-      t('action.revert')
-    );
-    if (!confirmed) {
-      return;
-    }
-    try {
-      await revertCommit(state.repoPath, commit.sha, mainline);
-    } catch (error) {
-      // A conflict leaves the revert half-done: show the files, keep the error.
-      await statusBuffer.refreshAll();
-      await updateStatusBar();
-      throw error;
-    }
-    await statusBuffer.refreshAll();
-    await logBuffer.refresh(state.uri, editor.selection.active.line);
-    await updateStatusBar();
-    notify(t('msg.reverted', { sha: commit.shortSha }));
-  });
-
   register('githelm.file.actions', async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.uri.scheme !== 'file') {
@@ -1876,7 +2032,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const relative = repoRelativePath(repo, editor.document.uri.fsPath);
     const picked = await vscode.window.showQuickPick(
       [
-        { label: t('help.history'), description: 'git log --follow', value: 'log' },
+        { label: t('fileHistory.log'), description: 'git log --follow', value: 'log' },
         { label: 'Blame', description: 'git blame', value: 'blame' },
       ],
       { placeHolder: relative }
@@ -1885,10 +2041,11 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     if (picked.value === 'log') {
-      await logBuffer.open(repo, false, { path: relative });
+      // The history screen, scoped to the file: one screen for a path and for a branch.
+      await logWebview.showPath(repo, relative);
       return;
     }
-    await fileHistoryBuffer.open('blame', repo, relative);
+    await openFileHistory('blame', repo, relative);
   });
 
   // ---------- remotes / sync ----------
@@ -1917,13 +2074,9 @@ export function activate(context: vscode.ExtensionContext): void {
     return new Set((picked ?? []).map((item) => item.value));
   };
 
-  register('githelm.status.fetch', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    const remote = await pickRemote(repo);
+  /** `target` is the remote of a selected row: the picker is not asked again. */
+  const runFetch = async (repo: string, target?: string): Promise<void> => {
+    const remote = target ?? (await pickRemote(repo));
     if (!remote) {
       return;
     }
@@ -1937,19 +2090,12 @@ export function activate(context: vscode.ExtensionContext): void {
       { prune: flags.has('prune'), tags: flags.has('tags') },
       (update) => showProgress(t('progress.fetch'), update)
     );
-    await statusBuffer.refreshAll();
-    await logBuffer.refreshAll();
     await updateStatusBar();
     notify(t('msg.fetched'));
-  });
+  };
 
-  register('githelm.status.pull', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    const remote = await pickRemote(repo);
+  const runPull = async (repo: string, target?: string): Promise<void> => {
+    const remote = target ?? (await pickRemote(repo));
     if (!remote) {
       return;
     }
@@ -1963,19 +2109,12 @@ export function activate(context: vscode.ExtensionContext): void {
       { rebase: flags.has('rebase'), ffOnly: flags.has('ffOnly') },
       (update) => showProgress(t('progress.pull'), update)
     );
-    await statusBuffer.refreshAll();
-    await logBuffer.refreshAll();
     await updateStatusBar();
     notify(t('msg.pulled'));
-  });
+  };
 
-  register('githelm.status.push', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    const remote = await pickRemote(repo);
+  const runPush = async (repo: string, target?: string): Promise<void> => {
+    const remote = target ?? (await pickRemote(repo));
     if (!remote) {
       return;
     }
@@ -2005,11 +2144,9 @@ export function activate(context: vscode.ExtensionContext): void {
       tags: flags.has('tags'),
       setUpstream: flags.has('setUpstream'),
     });
-    await statusBuffer.refreshAll();
-    await logBuffer.refreshAll();
     await updateStatusBar();
     notify(t('msg.pushed'));
-  });
+  };
 
   const pickResetMode = async (): Promise<ResetMode | undefined> => {
     const picked = await vscode.window.showQuickPick(
@@ -2031,12 +2168,7 @@ export function activate(context: vscode.ExtensionContext): void {
     return confirmed === t('action.reset');
   };
 
-  register('githelm.status.reset', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
+  const runReset = async (repo: string): Promise<void> => {
     const mode = await pickResetMode();
     if (!mode || !(await confirmReset(mode))) {
       return;
@@ -2051,17 +2183,11 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     await resetTo(repo, mode, picked.value);
-    await statusBuffer.refreshAll();
     await updateStatusBar();
     notify(t('msg.resetDone', { mode, target: picked.label }));
-  });
+  };
 
-  register('githelm.status.abortMerge', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
+  const runAbort = async (repo: string): Promise<void> => {
     const pending = await pendingOperation(repo);
     if (!pending) {
       notify(t('msg.noMerge'));
@@ -2082,129 +2208,61 @@ export function activate(context: vscode.ExtensionContext): void {
       notify(t('msg.noMerge'));
       return;
     }
-    await statusBuffer.refreshAll();
     await updateStatusBar();
     notify(aborted === 'merge' ? t('msg.mergeAborted') : t('msg.opAborted', { kind: aborted }));
-  });
+  };
 
-  // ---------- log reset ----------
+  /** The submodule screen, re-read where it is shown. */
+  const refreshSubmodules = (): Promise<void> => refreshScreens();
 
-  register('githelm.log.reset', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
+  /**
+   * Opens a repository's status screen in the mode the user chose. The buffers have one
+   * status screen per repository; the panel follows the screen it drives, so the same
+   * call from a submodule row lands in the panel when the panel is the UI in use.
+   */
+  const openRepoStatus = async (repoPath: string): Promise<void> => {
+    await statusWebview.show(repoPath);
+  };
+
+  /**
+   * The submodules screen's keys, once for both UIs. The row is looked up in the
+   * repository again rather than trusted from the message, so a submodule removed in
+   * another window reports "Cursor is not on a submodule" instead of acting on nothing.
+   */
+  const runSubmodule = async (action: ScreenAction, repoPath: string, ids: readonly string[]): Promise<void> => {
+    // `r` and `q` are the screen's own: the host re-reads or closes it, nothing to do here.
+    if (action === 'refresh' || action === 'close') {
       return;
     }
-    const state = logBuffer.stateFor(editor.document.uri);
-    const commit = logBuffer.commitAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !commit) {
-      notify(t('msg.cursorNotCommit'));
+    const wanted = ids
+      .filter((id) => id.startsWith('submodule:'))
+      .map((id) => id.slice('submodule:'.length))
+      .slice(0, 1);
+    const pathUnderRow = wanted[0];
+    if (!pathUnderRow) {
+      notify(t('msg.cursorNotSubmodule'));
       return;
     }
-    const mode = await pickResetMode();
-    if (!mode || !(await confirmReset(mode))) {
+    const { submodules } = await readSubmoduleStatus(repoPath);
+    const sub = submodules.find((candidate) => candidate.path === pathUnderRow);
+    if (!sub) {
+      notify(t('msg.cursorNotSubmodule'));
       return;
     }
-    await resetTo(state.repoPath, mode, commit.sha);
-    await statusBuffer.refreshAll();
-    await logBuffer.refresh(state.uri, editor.selection.active.line);
+    if (action === 'open') {
+      if (sub.state === 'uninitialized') {
+        notify(t('msg.submoduleNotInitialized', { path: sub.path }));
+        return;
+      }
+      // A checked-out submodule is a repository of its own, so it gets its own status
+      // screen — that is where its changes are actually staged or discarded.
+      await openRepoStatus(path.join(repoPath, sub.path));
+      return;
+    }
+    await updateSubmodule(repoPath, sub.path, action === 'updateRemote' ? { init: true, remote: true } : { init: true });
+    await refreshSubmodules();
     await updateStatusBar();
-    notify(t('msg.resetDone', { mode, target: commit.shortSha }));
-  });
-
-  // ---------- branches: merge / delete remote / reset ----------
-
-  register('githelm.branches.merge', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = branchesBuffer.stateFor(editor.document.uri);
-    const entry = branchesBuffer.branchAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !entry) {
-      notify(t('msg.cursorNotBranch'));
-      return;
-    }
-    if (entry.current) {
-      notify(t('msg.notEditable'));
-      return;
-    }
-    try {
-      await mergeRef(state.repoPath, entry.name);
-      notify(t('msg.merged', { name: entry.name }));
-    } catch (error) {
-      await statusBuffer.refreshAll();
-      throw error;
-    }
-    await branchesBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-  });
-
-  register('githelm.branches.deleteRemote', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = branchesBuffer.stateFor(editor.document.uri);
-    const entry = branchesBuffer.branchAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !entry) {
-      notify(t('msg.cursorNotBranch'));
-      return;
-    }
-    const slash = entry.name.indexOf('/');
-    const remote = entry.isRemote && slash > 0 ? entry.name.slice(0, slash) : (await pickRemote(state.repoPath));
-    const branch = entry.isRemote && slash > 0 ? entry.name.slice(slash + 1) : entry.name;
-    if (!remote) {
-      return;
-    }
-    const confirmed = await vscode.window.showWarningMessage(
-      t('confirm.deleteRemoteBranch', { name: entry.name }),
-      { modal: true },
-      t('action.delete')
-    );
-    if (confirmed !== t('action.delete')) {
-      return;
-    }
-    await deleteRemoteBranch(state.repoPath, remote, branch);
-    await branchesBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    notify(t('msg.deleted'));
-  });
-
-  register('githelm.branches.reset', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = branchesBuffer.stateFor(editor.document.uri);
-    const entry = branchesBuffer.branchAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !entry) {
-      notify(t('msg.cursorNotBranch'));
-      return;
-    }
-    const mode = await pickResetMode();
-    if (!mode || !(await confirmReset(mode))) {
-      return;
-    }
-    await resetTo(state.repoPath, mode, entry.name);
-    await branchesBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-    notify(t('msg.resetDone', { mode, target: entry.name }));
-  });
-
-  // ---------- submodules screen ----------
-
-  const submoduleAtCursor = (): { repoPath: string; submodule: Submodule } | undefined => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return undefined;
-    }
-    const state = submodulesBuffer.stateFor(editor.document.uri);
-    const submodule = submodulesBuffer.submoduleAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !submodule) {
-      return undefined;
-    }
-    return { repoPath: state.repoPath, submodule };
+    notify(t('msg.submoduleUpdated', { path: sub.path }));
   };
 
   register('githelm.submodules.open', async () => {
@@ -2213,51 +2271,8 @@ export function activate(context: vscode.ExtensionContext): void {
       warn(t('msg.noRepo'));
       return;
     }
-    await submodulesBuffer.open(repo);
+    await submodulesWebview.show(repo);
   });
-
-  register('githelm.submodules.refresh', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || !submodulesBuffer.stateFor(editor.document.uri)) {
-      warn(t('msg.notSubmodules'));
-      return;
-    }
-    await submodulesBuffer.refresh(editor.document.uri, editor.selection.active.line);
-  });
-
-  register('githelm.submodules.enter', async () => {
-    const found = submoduleAtCursor();
-    if (!found) {
-      notify(t('msg.cursorNotSubmodule'));
-      return;
-    }
-    if (found.submodule.state === 'uninitialized') {
-      notify(t('msg.submoduleNotInitialized', { path: found.submodule.path }));
-      return;
-    }
-    // A checked-out submodule is a repository of its own, so it gets its own
-    // status screen — that is where its changes are actually staged or discarded.
-    await statusBuffer.open(path.join(found.repoPath, found.submodule.path));
-  });
-
-  const updateSubmoduleAtCursor = async (remote: boolean): Promise<void> => {
-    const found = submoduleAtCursor();
-    if (!found) {
-      notify(t('msg.cursorNotSubmodule'));
-      return;
-    }
-    await updateSubmodule(found.repoPath, found.submodule.path, remote ? { init: true, remote: true } : { init: true });
-    const editor = vscode.window.activeTextEditor;
-    if (editor && submodulesBuffer.stateFor(editor.document.uri)) {
-      await submodulesBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    }
-    await statusBuffer.refreshAll();
-    await updateStatusBar();
-    notify(t('msg.submoduleUpdated', { path: found.submodule.path }));
-  };
-
-  register('githelm.submodules.update', () => updateSubmoduleAtCursor(false));
-  register('githelm.submodules.updateRemote', () => updateSubmoduleAtCursor(true));
 
   // ---------- forge (GitHub / GitLab API) ----------
 
@@ -2312,12 +2327,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   register('githelm.forge.createPull', () => openNewPull());
 
-  register('githelm.forge.pulls', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
+  const runPulls = async (repo: string): Promise<void> => {
     const remote = await forgeRemoteFor(repo);
     if (!remote) {
       warn(t('msg.forgeNoRemote'));
@@ -2372,7 +2382,125 @@ export function activate(context: vscode.ExtensionContext): void {
     if (picked.url) {
       await vscode.env.openExternal(vscode.Uri.parse(picked.url));
     }
-  });
+  };
+
+  /** The repository-wide keys, implemented once for the buffer and the panel. */
+  const runRepo = async (action: RepoAction, repo: string): Promise<void> => {
+    switch (action) {
+      case 'amend':
+        return runAmend(repo);
+      case 'fetch':
+        return runFetch(repo);
+      case 'pull':
+        return runPull(repo);
+      case 'push':
+        return runPush(repo);
+      case 'reset':
+        return runReset(repo);
+      case 'abort':
+        return runAbort(repo);
+      case 'pulls':
+        return runPulls(repo);
+      case 'remoteAdd':
+        return runRemoteAdd(repo);
+      case 'worktreeAdd':
+        return runWorktreeAdd(repo);
+      case 'worktreePrune':
+        return runWorktreePrune(repo);
+      default:
+        return;
+    }
+  };
+
+  /**
+   * The row the panel had selected, looked up again: an id that no longer exists
+   * must not act on a stale remote or worktree.
+   */
+  const resolvePanelTarget = async (repo: string, target: PanelTarget): Promise<StatusTarget | undefined> => {
+    if (target.kind === 'remote') {
+      const found = (await listRemotes(repo)).find((entry) => entry.name === target.value);
+      return found ? { kind: 'remote', section: 'remotes', name: found.name, url: found.url } : undefined;
+    }
+    if (target.kind === 'worktree') {
+      const found = (await listWorktrees(repo)).find((entry) => samePath(entry.path, target.value));
+      return found
+        ? {
+            kind: 'worktree',
+            section: 'worktrees',
+            path: found.path,
+            current: samePath(found.path, repo),
+            prunable: found.prunable,
+          }
+        : undefined;
+    }
+    return { kind: 'stash', section: 'stash', ref: target.value, subject: '' };
+  };
+
+  /** The panel's half of the row commands: it names a row, the host acts on it. */
+  const runTarget = async (action: TargetAction, repo: string, target: PanelTarget): Promise<void> => {
+    if (action === 'fetch' || action === 'pull' || action === 'push') {
+      // A remote row names the remote, so the picker is not asked again. Any other
+      // row leaves the key with the buffer's meaning: the repository's own remote,
+      // asked for.
+      if (target.kind !== 'remote') {
+        return runRepo(action, repo);
+      }
+      if (action === 'fetch') {
+        await runFetch(repo, target.value);
+      } else if (action === 'pull') {
+        await runPull(repo, target.value);
+      } else {
+        await runPush(repo, target.value);
+      }
+      return;
+    }
+
+    const resolved = await resolvePanelTarget(repo, target);
+    if (!resolved) {
+      notify(t('msg.cursorNotEntry'));
+      return;
+    }
+
+    switch (action) {
+      case 'open':
+        return runOpenTarget(repo, resolved);
+      case 'diff':
+        if (resolved.kind !== 'stash') {
+          notify(t('msg.forFiles'));
+          return;
+        }
+        return runStashDiff(repo, resolved.ref);
+      case 'delete':
+        return runDeleteTarget(repo, resolved);
+      case 'edit':
+        return runEditTarget(repo, resolved);
+      case 'stashApply':
+        if (resolved.kind !== 'stash') {
+          notify(t('msg.cursorNotEntry'));
+          return;
+        }
+        return runStashApply(repo, resolved.ref);
+      case 'stashPop':
+        if (resolved.kind !== 'stash') {
+          notify(t('msg.cursorNotEntry'));
+          return;
+        }
+        return runStashPop(repo, resolved.ref);
+      case 'worktreeWindow':
+        if (resolved.kind !== 'worktree') {
+          // Not a worktree: the opening keys keep their meaning, as in the buffer.
+          return runOpenTarget(repo, resolved);
+        }
+        return runWorktreeWindow(resolved);
+      case 'worktreeHere':
+        if (resolved.kind !== 'worktree') {
+          return runOpenTarget(repo, resolved);
+        }
+        return runWorktreeHere(resolved);
+      default:
+        return;
+    }
+  };
 
   // ---------- tags screen ----------
 
@@ -2382,168 +2510,8 @@ export function activate(context: vscode.ExtensionContext): void {
       warn(t('msg.noRepo'));
       return;
     }
-    await tagsBuffer.open(repo);
-  });
-
-  register('githelm.tags.refresh', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || !tagsBuffer.stateFor(editor.document.uri)) {
-      warn(t('msg.notBranches'));
-      return;
-    }
-    await tagsBuffer.refresh(editor.document.uri, editor.selection.active.line);
-  });
-
-  register('githelm.tags.show', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = tagsBuffer.stateFor(editor.document.uri);
-    const tag = tagsBuffer.tagAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !tag) {
-      notify(t('msg.cursorNotTag'));
-      return;
-    }
-    await commitBuffer.open(state.repoPath, tag.name);
-  });
-
-  register('githelm.tags.push', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = tagsBuffer.stateFor(editor.document.uri);
-    const tag = tagsBuffer.tagAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !tag) {
-      notify(t('msg.cursorNotTag'));
-      return;
-    }
-    const remote = await pickRemote(state.repoPath);
-    if (!remote) {
-      return;
-    }
-    try {
-      // Asked before the confirmation so the question can say what is about to be
-      // overwritten — and so the push can lease against exactly that value.
-      const onRemote = await remoteTag(state.repoPath, remote, tag.name);
-      const moved = onRemote !== undefined && !onRemote.commit.startsWith(tag.sha);
-      const confirmed = await vscode.window.showWarningMessage(
-        moved
-          ? t('confirm.pushTagMoved', {
-              name: tag.name,
-              remote,
-              remoteSha: onRemote.commit.slice(0, 7),
-              localSha: tag.sha,
-            })
-          : t('confirm.pushTag', { name: tag.name, remote }),
-        { modal: true },
-        t('action.push')
-      );
-      if (confirmed !== t('action.push')) {
-        return;
-      }
-      await pushTag(state.repoPath, remote, tag.name);
-      await tagsBuffer.refresh(editor.document.uri, editor.selection.active.line);
-      notify(t('msg.tagPushed', { name: tag.name, remote }));
-    } catch (error) {
-      fail(error);
-    }
-  });
-
-  register('githelm.tags.deleteRemote', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = tagsBuffer.stateFor(editor.document.uri);
-    const tag = tagsBuffer.tagAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !tag) {
-      notify(t('msg.cursorNotTag'));
-      return;
-    }
-    const remote = await pickRemote(state.repoPath);
-    if (!remote) {
-      return;
-    }
-    const confirmed = await vscode.window.showWarningMessage(
-      t('confirm.deleteRemoteTag', { name: tag.name, remote }),
-      { modal: true },
-      t('action.delete')
-    );
-    if (confirmed !== t('action.delete')) {
-      return;
-    }
-    try {
-      await deleteRemoteTag(state.repoPath, remote, tag.name);
-      await tagsBuffer.refresh(editor.document.uri, editor.selection.active.line);
-      notify(t('msg.tagDeletedRemote', { name: tag.name, remote }));
-    } catch (error) {
-      fail(error);
-    }
-  });
-
-  register('githelm.tags.create', async () => {
-    const repo = await resolveRepo();
-    if (!repo) {
-      warn(t('msg.noRepo'));
-      return;
-    }
-    await createTagAt(repo);
-    await statusBuffer.refreshAll();
-    for (const document of vscode.workspace.textDocuments) {
-      if (document.uri.scheme === SCHEME && document.uri.path.startsWith('/tags/')) {
-        await tagsBuffer.refresh(document.uri, 0);
-      }
-    }
-  });
-
-  register('githelm.tags.move', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = tagsBuffer.stateFor(editor.document.uri);
-    const tag = tagsBuffer.tagAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !tag) {
-      notify(t('msg.cursorNotTag'));
-      return;
-    }
-    const confirmed = await vscode.window.showWarningMessage(
-      t('confirm.moveTag', { name: tag.name }),
-      { modal: true },
-      t('action.move')
-    );
-    if (confirmed !== t('action.move')) {
-      return;
-    }
-    await moveTag(state.repoPath, tag.name);
-    await tagsBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    notify(t('msg.updated'));
-  });
-
-  register('githelm.tags.delete', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = tagsBuffer.stateFor(editor.document.uri);
-    const tag = tagsBuffer.tagAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !tag) {
-      notify(t('msg.cursorNotTag'));
-      return;
-    }
-    const confirmed = await vscode.window.showWarningMessage(
-      t('confirm.deleteTag', { name: tag.name }),
-      { modal: true },
-      t('action.delete')
-    );
-    if (confirmed !== t('action.delete')) {
-      return;
-    }
-    await deleteTag(state.repoPath, tag.name);
-    await tagsBuffer.refresh(editor.document.uri, editor.selection.active.line);
-    notify(t('msg.deleted'));
+    await tagsWebview.show(repo);
+    await updateStatusBar();
   });
 
   register('githelm.language', async () => {
@@ -2556,32 +2524,15 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     setLanguage(picked.value as Language);
     await context.globalState.update('githelm.language', picked.value);
-    await restoreOpenBuffers();
     notify(t('msg.languageChanged', { language: picked.label }));
   });
 
-  register('githelm.log.resetFilters', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    if (!logBuffer.stateFor(editor.document.uri)) {
-      warn(t('msg.notLog'));
-      return;
-    }
-    await logBuffer.resetFilters(editor.document.uri, editor.selection.active.line);
-    notify(t('msg.filterCleared'));
-  });
-
-  register('githelm.actionLog', async () => {
-    await actionLogBuffer.open();
-  });
-
-  register('githelm.actionLog.clear', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || !actionLogBuffer.isActionLog(editor.document.uri)) {
-      return;
-    }
+  /**
+   * `c` on the action log, once for both UIs: the same modal question, the same emptied
+   * log. The screen it runs from re-reads itself afterwards, and the buffer is re-read
+   * here because a command can arrive while the buffer is the visible host.
+   */
+  const runClearActionLog = async (): Promise<void> => {
     const confirmed = await vscode.window.showWarningMessage(
       t('confirm.clearLog'),
       { modal: true },
@@ -2590,158 +2541,136 @@ export function activate(context: vscode.ExtensionContext): void {
     if (confirmed !== t('action.delete')) {
       return;
     }
-    await actionLogBuffer.clear(editor.document.uri);
+    clearActions();
     notify(t('actionLog.empty'));
+  };
+
+  register('githelm.actionLog', async () => {
+    // The log is not a screen of a repository, so the panel is opened with the empty
+    // path: `repoIfVisible()` then reports nothing and no command acts on a repo the
+    // log does not have.
+    await actionLogWebview.show('');
   });
 
-  register('githelm.actionLog.refresh', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || !actionLogBuffer.isActionLog(editor.document.uri)) {
-      return;
+  // d compares the selected rows: one row against HEAD, two rows with each other.
+  /**
+   * The rows a cursor or a drag covers, 1-based: every line of every selection. `filesOf`
+   * turns them into files, so a selection that walks across the metadata diffs the files
+   * in it and a selection of the `## files` header diffs all of them.
+   */
+  const selectedLines = (editor: vscode.TextEditor): number[] => {
+    const lines = new Set<number>();
+    for (const selection of editor.selections) {
+      for (let line = selection.start.line; line <= selection.end.line; line++) {
+        lines.add(line + 1);
+      }
     }
-    await actionLogBuffer.refresh(editor.document.uri, editor.selection.active.line);
-  });
+    return [...lines].sort((left, right) => left - right);
+  };
 
-  register('githelm.log.sort', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = logBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      warn(t('msg.notLog'));
-      return;
-    }
-    const sort = await logBuffer.toggleSort(editor.document.uri, editor.selection.active.line);
-    const label = sort === 'topo' ? t('sort.topo') : sort === 'date' ? t('sort.date') : t('sort.authorDate');
-    notify(t('msg.sorted', { sort: label }));
-  });
-
-  register('githelm.log.compare', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = logBuffer.stateFor(editor.document.uri);
-    if (!state) {
-      warn(t('msg.notLog'));
-      return;
-    }
-
-    const lines = [...new Set(editor.selections.map((selection) => selection.active.line + 1))];
-    const commits = lines
-      .map((line) => logBuffer.commitAt(editor.document.uri, line))
-      .filter((commit): commit is NonNullable<typeof commit> => commit !== undefined);
-    if (commits.length === 0) {
-      notify(t('compare.needCommits'));
-      return;
-    }
-
-    const head = await headSha(state.repoPath);
-    const left = commits[0].sha;
-    const right = commits.length > 1 ? commits[1].sha : head;
-    const leftLabel = commits[0].shortSha;
-    const rightLabel = commits.length > 1 ? commits[1].shortSha : 'HEAD';
-
-    const picked = await vscode.window.showQuickPick(
-      [
-        { label: t('compare.diffTwo'), value: 'diff-two' },
-        { label: t('compare.diffThree'), value: 'diff-three' },
-        { label: t('compare.diffSwapped'), value: 'diff-swapped' },
-        { label: t('compare.logTwo'), value: 'log-two' },
-        { label: t('compare.logThree'), value: 'log-three' },
-        { label: t('compare.logSwapped'), value: 'log-swapped' },
-      ],
-      { placeHolder: t('compare.pick', { a: leftLabel, b: rightLabel }) }
-    );
-    if (!picked) {
-      return;
-    }
-
-    const openDiff = async (a: string, b: string, mode: 'two' | 'three'): Promise<void> => {
-      const range = compareRange(a, b, mode);
-      const text = await compareDiff(state.repoPath, a, b, mode);
-      await compareBuffer.open(state.repoPath, range, text);
-    };
-
-    switch (picked.value) {
-      case 'diff-two':
-        await openDiff(left, right, 'two');
-        break;
-      case 'diff-three':
-        await openDiff(left, right, 'three');
-        break;
-      case 'diff-swapped':
-        await openDiff(right, left, 'two');
-        break;
-      case 'log-two':
-        await logBuffer.openCompare(state.repoPath, compareRange(left, right, 'two'), false);
-        break;
-      case 'log-three':
-        await logBuffer.openCompare(state.repoPath, compareRange(left, right, 'three'), true);
-        break;
-      case 'log-swapped':
-        await logBuffer.openCompare(state.repoPath, compareRange(right, left, 'two'), false);
-        break;
-    }
-  });
-  register('githelm.stash.fileDiff', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = stashBuffer.stateFor(editor.document.uri);
-    const path = stashBuffer.fileAt(editor.document.uri, editor.selection.active.line + 1);
-    if (!state || !path) {
+  /**
+   * `d` on a stash's file list: the files as the stash left them, against the commit the
+   * stash was made on. That pair is exactly `git stash show -p -- <path>`, read in the
+   * editor's own diff instead of a generated patch — one multi-diff tab for the whole
+   * selection.
+   */
+  const openStashFileDiffs = async (uri: vscode.Uri, rows: readonly number[]): Promise<void> => {
+    const state = stashDoc.stateFor(uri);
+    const files = filesOf(stashDoc.fileListOf(uri), rows);
+    if (!state || files.length === 0) {
       notify(t('msg.cursorNotFile'));
       return;
     }
-    const text = await stashFileDiff(state.repoPath, state.ref, path);
-    await compareBuffer.open(state.repoPath, `${state.ref}/${path}`, text);
+    await openRevisionDiffs(state.repoPath, files, `${state.ref}^`, state.ref, state.ref);
+  };
+
+  register('githelm.stash.fileDiff', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+      await openStashFileDiffs(editor.document.uri, selectedLines(editor));
+    }
   });
 
-  const takeConflictSide = async (side: 'ours' | 'theirs' | 'base'): Promise<void> => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
+  /**
+   * `d` on a commit's file list: the files as the commit left them, against its first
+   * parent. A root commit has no parent to compare with, so the files at the commit are
+   * opened on their own — there is no "before" to show.
+   */
+  const openCommitFileDiffs = async (uri: vscode.Uri, rows: readonly number[]): Promise<void> => {
+    const state = commitDoc.stateFor(uri);
+    const files = filesOf(commitDoc.fileListOf(uri), rows);
+    if (!state || files.length === 0) {
+      notify(t('msg.cursorNotFile'));
       return;
     }
-    const state = conflictBuffer.stateFor(editor.document.uri);
+    const parent = await firstParent(state.repoPath, state.sha);
+    if (!parent) {
+      await openFilesAtRef(state.repoPath, files, state.sha);
+      return;
+    }
+    await openRevisionDiffs(state.repoPath, files, parent, state.sha, state.sha.slice(0, 8));
+  };
+
+  register('githelm.commit.fileDiff', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+      await openCommitFileDiffs(editor.document.uri, selectedLines(editor));
+    }
+  });
+
+  /**
+   * `t` on a commit's file list: the same files, but as the commit left them, each in a tab
+   * of its own instead of a diff. A commit is a state, not only a change, and there is no
+   * other way to read a file at an old revision without checking that revision out — that
+   * is what `git show <sha>:<path>` gives the blame and the root-commit case already.
+   */
+  const openCommitFilesAtRef = async (uri: vscode.Uri, rows: readonly number[]): Promise<void> => {
+    const state = commitDoc.stateFor(uri);
+    const files = filesOf(commitDoc.fileListOf(uri), rows);
+    if (!state || files.length === 0) {
+      notify(t('msg.cursorNotFile'));
+      return;
+    }
+    await openFilesAtRef(state.repoPath, files, state.sha);
+  };
+
+  register('githelm.commit.filesAtRef', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+      await openCommitFilesAtRef(editor.document.uri, selectedLines(editor));
+    }
+  });
+
+  /**
+   * The conflict keys, addressed by the document instead of the active editor: the
+   * buffer passes its own URI, the panel the one it draws.
+   */
+  const takeConflictSide = async (uri: vscode.Uri, side: 'ours' | 'theirs' | 'base'): Promise<void> => {
+    const state = conflictDoc.stateFor(uri);
     if (!state) {
       warn(t('msg.notStatus'));
       return;
     }
     await takeSide(state.repoPath, state.relativePath, side);
-    await conflictBuffer.refresh(editor.document.uri);
-    await statusBuffer.refreshAll();
+    await conflictDoc.reload(uri);
     notify(t('msg.updated'));
   };
 
-  register('githelm.conflict.ours', () => takeConflictSide('ours'));
-  register('githelm.conflict.theirs', () => takeConflictSide('theirs'));
-  register('githelm.conflict.base', () => takeConflictSide('base'));
-
-  register('githelm.conflict.resolve', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = conflictBuffer.stateFor(editor.document.uri);
+  /** `s`: mark the file resolved, the same for both UIs. */
+  const resolveConflict = async (uri: vscode.Uri): Promise<void> => {
+    const state = conflictDoc.stateFor(uri);
     if (!state) {
       warn(t('msg.notStatus'));
       return;
     }
     await markResolved(state.repoPath, state.relativePath);
-    await statusBuffer.refreshAll();
     await updateStatusBar();
     notify(t('msg.conflictResolved'));
-  });
+  };
 
-  register('githelm.conflict.mergeEditor', async () => {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
-    }
-    const state = conflictBuffer.stateFor(editor.document.uri);
+  /** `m`: VS Code's own three-way editor, falling back to the file itself. */
+  const openMergeEditor = async (uri: vscode.Uri): Promise<void> => {
+    const state = conflictDoc.stateFor(uri);
     if (!state) {
       warn(t('msg.notStatus'));
       return;
@@ -2752,56 +2681,68 @@ export function activate(context: vscode.ExtensionContext): void {
     } catch {
       await vscode.window.showTextDocument(file, { preview: false });
     }
+  };
+
+  const activeConflictUri = (): vscode.Uri | undefined => vscode.window.activeTextEditor?.document.uri;
+
+  register('githelm.conflict.ours', async () => {
+    const uri = activeConflictUri();
+    if (uri) {
+      await takeConflictSide(uri, 'ours');
+    }
   });
-  register('githelm.buffer.close', async () => {
-    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  register('githelm.conflict.theirs', async () => {
+    const uri = activeConflictUri();
+    if (uri) {
+      await takeConflictSide(uri, 'theirs');
+    }
+  });
+  register('githelm.conflict.base', async () => {
+    const uri = activeConflictUri();
+    if (uri) {
+      await takeConflictSide(uri, 'base');
+    }
   });
 
-  // Buffers keep their text in memory, so a restarted extension host would show
-  // empty tabs. Rebuild whatever is still open from the URIs themselves.
-  const restoreOpenBuffers = async (): Promise<void> => {
+  register('githelm.conflict.resolve', async () => {
+    const uri = activeConflictUri();
+    if (uri) {
+      await resolveConflict(uri);
+    }
+  });
+
+  register('githelm.conflict.mergeEditor', async () => {
+    const uri = activeConflictUri();
+    if (uri) {
+      await openMergeEditor(uri);
+    }
+  });
+  // The two arrows of the diff editor's own toolbar. Which of them is greyed out is the
+  // context keys' answer, so a press that arrives anyway says why instead of doing nothing.
+  register('githelm.diff.walkPrev', () => diffWalk.run('older'));
+  register('githelm.diff.walkNext', () => diffWalk.run('newer'));
+
+  // A blame is the one `githelm:` document a window reload restores: its text lives in
+  // memory only, so it is rebuilt from the URI the tab was reopened with.
+  const restoreBlameTabs = async (): Promise<void> => {
     for (const document of vscode.workspace.textDocuments) {
-      const uri = document.uri;
-      if (uri.scheme !== SCHEME) {
+      if (document.uri.scheme !== SCHEME) {
         continue;
       }
       try {
-        if (uri.path.startsWith('/status/')) {
-          await statusBuffer.refresh(uri);
-        } else if (uri.path.startsWith('/log/')) {
-          await logBuffer.refresh(uri, 0);
-        } else if (uri.path.startsWith('/diff/')) {
-          await diffBuffer.refresh(uri, 0);
-        } else if (uri.path.startsWith('/branches/')) {
-          await branchesBuffer.refresh(uri, 0);
-        } else if (uri.path.startsWith('/tags/')) {
-          await tagsBuffer.refresh(uri, 0);
-        } else if (uri.path.startsWith('/submodules/')) {
-          await submodulesBuffer.refresh(uri, 0);
-        } else if (uri.path.startsWith('/file/')) {
-          await fileHistoryBuffer.restore(uri);
-        } else if (uri.path.startsWith('/actionlog')) {
-          await actionLogBuffer.refresh(uri, 0);
-        } else if (uri.path.startsWith('/help/')) {
-          await helpBuffer.restore(uri);
-        } else if (uri.path.startsWith('/conflict/')) {
-          await conflictBuffer.refresh(uri);
-        } else if (uri.path.startsWith('/stashfiles/')) {
-          await stashBuffer.refresh(uri, 0);
-        } else if (uri.path.startsWith('/commit/')) {
-          await commitBuffer.restore(uri);
-        }
+        await historyDoc.restore(document.uri);
       } catch (error) {
-        // Restoring the buffers of the last session happens once, at start-up: a
-        // failure here leaves an empty buffer with no explanation, so it gets the
-        // same treatment as any other failure.
+        // Restoring a tab of the last session happens once, at start-up: a failure here
+        // leaves an empty editor with no explanation, so it gets the usual treatment.
         fail(error);
       }
     }
   };
-  void restoreOpenBuffers();
+  void restoreBlameTabs();
+
 
   syncContext();
+  void diffWalk.sync();
   void updateStatusBar();
   output.appendLine('Git Helm ready.');
 }

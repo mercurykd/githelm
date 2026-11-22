@@ -32,6 +32,11 @@ export interface ParsedLog {
 export interface LogRow {
   text: string;
   commit?: LogCommit;
+  /**
+   * Column where the subject starts, so a screen can wrap a long subject under the
+   * subject column instead of under the graph. Unset on a graph-only row.
+   */
+  subjectStart?: number;
   /** Spans use line indices relative to the rows array; the view offsets them. */
   spans: Span[];
 }
@@ -99,7 +104,9 @@ export function isFilterEmpty(filter: LogFilter | undefined): boolean {
 
 const SEP = '\x1f';
 const FORMAT = `--format=${SEP}%H${SEP}%h${SEP}%P${SEP}%an${SEP}%ad${SEP}%s${SEP}%D`;
-const DEFAULT_LIMIT = 200;
+/** One page of history. A screen that pages reads this many commits at a time. */
+export const LOG_PAGE = 200;
+const DEFAULT_LIMIT = LOG_PAGE;
 const DEFAULT_DATE_FORMAT = '%Y-%m-%d %H:%M';
 
 export type LogSort = 'topo' | 'date' | 'author-date';
@@ -294,7 +301,7 @@ export function logRows(parsed: ParsedLog): LogRow[] {
       spans.push({ line: index, start: subjectStart, end: subjectStart + label.length, kind: 'refs' });
     }
 
-    return { text, commit, spans };
+    return { text, commit, subjectStart: subjectStart + labelText.length, spans };
   });
 }
 
@@ -325,4 +332,18 @@ export function checkoutableRefs(refs: string[]): string[] {
     result.push(name);
   }
   return result;
+}
+
+/** One commit by sha: a screen that keeps only the id of its row looks the row up again. */
+export async function commitBySha(repoPath: string, sha: string): Promise<LogCommit | undefined> {
+  // The panel hands over `commit:<sha>`; anything that is not a plain sha never reaches
+  // git, so a row id can never turn into an option.
+  if (!/^[0-9a-f]{4,64}$/i.test(sha)) {
+    return undefined;
+  }
+  const result = await git(repoPath, ['show', '-s', '--no-color', FORMAT, sha]);
+  if (result.code !== 0) {
+    return undefined;
+  }
+  return parseLog(result.stdout).commits[0];
 }

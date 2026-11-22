@@ -2,13 +2,13 @@
 
 **English** · [Русский](README.ru.md) · [中文](README.zh.md)
 
-A keyboard-driven, buffer-centric git UI for VS Code.
+A keyboard-driven git UI for VS Code, drawn in webview panels.
 
-Every screen is a real text buffer: no trees, no panels, no mouse. You open the status buffer, move the cursor, and act with single keys — `s` to stage, `c` to commit, `i` to add a file to `.gitignore`. Buffers stay in the editor area, so splits, search and the normal editing shortcuts keep working.
+Every screen is a webview panel — no trees, no mouse, and no second interface to keep in step. You open the status screen, move the cursor, and act with single keys — `s` to stage, `c` to commit, `i` to add a file to `.gitignore`. Panels stay in the editor area, so splits and the normal editor shortcuts keep working.
 
 ## What it does
 
-![The status buffer: the files on the left, `remotes` and `worktrees` in a column on the right, the commits and the recent actions below](media/demo/status.png)
+![The status screen: the files on the left, `remotes` and `worktrees` in a column on the right, the commits and the recent actions below](media/demo/status.png)
 
 *`alt+g` opens it: `s` stage, `d` diff, `c` commit, `Ctrl+S` records the commit.*
 
@@ -66,7 +66,9 @@ The folder name has to be `<publisher>.<name>`, so it matches the manifest — a
 
 ## Quick start
 
-`alt+g` opens the status buffer. That is the only shortcut you have to remember: from it, `g` opens history, `b` branches, `t` tags, `S` submodules, `F` pull requests, `l` the action log, `h` the key help for the current screen.
+`alt+g` opens the status screen. That is the only shortcut you have to remember: from it, `g` opens history, `b` branches, `t` tags, `S` submodules, `F` pull requests, `l` the action log.
+
+Every screen is a webview panel; there is no other interface to switch to, and no mode setting. The sub-screens are panels too — a commit, a stash's files, a conflict and a file's log — each drawn by a renderer of its own (see [docs/webview-status.md](docs/webview-status.md)). Every diff in a panel is VS Code's own diff editor — a selection opens as one multi-diff tab, and the files of a commit or a stash compare their parent against them — so there is no generated patch view anywhere. Each tab says what it compares, the way the built-in git names its own: `src/a.ts (Index)`, `src/a.ts (Working Tree)`, `src/a.ts (Untracked)`, or `src/a.ts (a1b2c3d) ↔ src/a.ts (dc3ba5e)`. Two more arrows in that editor's toolbar step the diff itself through the history — one commit back, one commit forward (`alt+[` / `alt+]`) — see [Stepping a diff through commits](#stepping-a-diff-through-commits). `Enter` on a commit opens a screen of its own: who wrote it and when, what it says, and the files it touched, with `d` onto the diff of the file under the cursor or of every file when the `## files` header is clicked. Blame is the file itself: it opens in a real editor as its own code — the same lines, highlighted by the language of that file, as wide as its longest line — with the metadata drawn *in front of* each line as a decoration: a fixed-width gutter of the sha, the author, the date and the commit's subject once per block, which the code scrolls under instead of wrapping around. Hovering a line shows the commit message in full, body and all, in VS Code's own hover box. Blame is the one screen that is not a panel, because a webview has no grammar to highlight the code with.
 
 ## Keys
 
@@ -103,8 +105,7 @@ The `keys` column of every screen is three lines tall and starts under the title
 | `F` | open pull requests / merge requests of the remote — or open the page that creates one |
 | `g` | commit history |
 | `r` | refresh |
-| `h` | help for the current screen |
-| `q` | close the buffer |
+| `q` | close the panel |
 
 The staged, unstaged and untracked sections are always on screen, even when empty: a section that disappears would move every row under it and drop the cursor on a different file. Only conflicts comes and goes, because its absence is the normal state.
 
@@ -116,7 +117,7 @@ The `stash` block lists the stashes of the repository and is drawn even when the
 
 Nothing that deletes or drops happens without a question first: `D` discard, `x` delete (stash, tag, remote, worktree), `x` on the branches and tags screens, `D` on the branches screen for a remote branch, `R`/`S` hard reset, `V` revert, `M` abort, `c` clear the action log. `p` pop does not ask: it applies the stash before dropping the entry, so the changes are in the working tree either way.
 
-The `worktrees` block lists every checkout of the repository with a `*` on the one the buffer belongs to; the cursor column decides which row a key acts on. `Enter` on a row switches to that worktree (its own status buffer), `Shift+Enter` opens that folder in a new window, `Alt+Enter` reopens this window on it — it asks first, since the current folder, layout and unsaved editors are lost — `n` adds one, `x` removes the worktree under the cursor — a dirty one asks for `--force` instead of failing, and the current worktree can only be removed from another one. `W` drops entries whose directory is already gone. When the active buffer belongs to a linked worktree, the status bar names it next to the branch.
+The `worktrees` block lists every checkout of the repository with a `*` on the one the panel belongs to; the cursor column decides which row a key acts on. `Enter` on a row switches to that worktree (its own status buffer), `Shift+Enter` opens that folder in a new window, `Alt+Enter` reopens this window on it — it asks first, since the current folder, layout and unsaved editors are lost — `n` adds one, `x` removes the worktree under the cursor — a dirty one asks for `--force` instead of failing, and the current worktree can only be removed from another one. `W` drops entries whose directory is already gone. When the active buffer belongs to a linked worktree, the status bar names it next to the branch.
 
 The author column is shared with the history graph: its width is the longest login plus two characters, so subjects line up across both screens instead of leaving a fixed gap.
 
@@ -132,13 +133,13 @@ The author column is shared with the history graph: its width is the longest log
 
 ### History
 
-![The history buffer: ASCII graph, refs, author and date columns, the filter block and key hints](media/demo/log.png)
+![The history screen: ASCII graph, refs, author and date columns, the filter block and key hints](media/demo/log.png)
 
 *`g` opens the graph: `Enter` commit, `/` filters, `a` all branches, `f` fixup into a commit.*
 
 | Key | Action |
 | --- | --- |
-| `Enter` | show the commit (metadata, stat, patch) |
+| `Enter` | open the commit screen: author, date, message, and the files it touched |
 | `n` | branch from the commit |
 | `t` | create a tag on the commit under the cursor — the row shows the new ref right away |
 | `c` | checkout the branch of the commit |
@@ -151,9 +152,11 @@ The author column is shared with the history graph: its width is the longest log
 | `x` | clear the filters |
 | `s` | cycle the sort order (topo / date / author date) |
 | `d` | compare commits: one commit gives `<commit>..HEAD`, two give `A..B` or `A...B` with left/right markers — and the menu offers both directions (`B..A`) for the diff and for the history graph |
-| `g` | open the graph — the key works in every githelm buffer, and the status, branches, tags, submodules and action-log screens show it in their hint lines |
+| `g` | open the graph — the key works in every screen, and the status, branches, tags, submodules and action-log screens show it in their hint lines |
 | `T` | tags screen |
 | `r` | refresh |
+
+The commit screen the `Enter` opens keeps `d` for the change of every file under the selection and binds `t` to those same files as the commit left them: one read-only tab each, which is how a file is read at an old revision without checking it out.
 
 ### Branches
 
@@ -166,6 +169,7 @@ The author column is shared with the history graph: its width is the longest log
 | `x` | delete |
 | `D` | delete a remote branch |
 | `m` | merge into the current branch |
+| `d` | compare — one branch against `HEAD`, two against each other; `diff …` opens the patch, `log …` the graph of the range |
 | `S` | reset the branch (soft/mixed/hard) |
 | `R` | toggle local/remote branches |
 | `g` | open the graph |
@@ -193,7 +197,7 @@ A row is the commit row of the history screen with the tag name standing where t
 
 | Key | Action |
 | --- | --- |
-| `Enter` | open the submodule as its own repository: it gets its own status buffer, where its changes are staged, diffed and committed |
+| `Enter` | open the submodule as its own repository: it gets its own status screen, where its changes are staged, diffed and committed |
 | `u` | check the submodule out at the commit the parent records (`git submodule update --init`) |
 | `U` | move it to the head of the branch configured in `.gitmodules` (`git submodule update --init --remote`) |
 | `g` | open the graph |
@@ -226,34 +230,51 @@ LFS keeps big blobs on its own server and commits a small pointer file instead. 
 
 | Key | Action |
 | --- | --- |
-| `alt+g` | status buffer |
+| `alt+g` | the status screen |
+| `alt+[` / `alt+]` | step an open diff to the commit before / after it |
 | `l` | action log |
-| `q` | close the buffer |
-| `h` | key help |
+| `q` | close the panel |
 
 ## Messages
 
 A confirmation or a hint ("Staged: 2", "Cursor is not on a file or a section header") appears in the
 status bar for four seconds and goes away. A refused action ("Cannot delete the branch you are on")
 also raises a notification, and a failure — a git command that answered with an error, a patch that did
-not apply, a buffer that could not be restored at start-up — is written to the **Git Helm** output
+not apply, a panel that could not be opened at start-up — is written to the **Git Helm** output
 channel with its stack *and* repeated as a notification, so a failure never ends as a line that faded
 before it was read. The channel keeps the detail; the notification carries the message.
 
 ## Folders without a repository
 
-`alt+g` does not fail outside a git repository. The status buffer opens with an `init` section instead: `Enter` on the `git init` row (or the notification button, or the `git init` item in the status bar) creates the repository and repaints the same buffer. A repository without commits (`git init`, empty history) opens normally — the log is simply empty.
+`alt+g` does not fail outside a git repository. The status screen opens with an `init` section instead : `Enter` on the `git init` row (or the notification button, or the `git init` item in the status bar) creates the repository and repaints the screen, a panel taking the place of the init panel. A repository without commits (`git init`, empty history) opens normally — the log is simply empty.
+
+## Stepping a diff through commits
+
+A diff in VS Code's own diff editor carries two more arrows in its toolbar, next to **Previous Change** and **Next Change**: `←` moves it one commit back, `→` one commit forward, and `alt+[` / `alt+]` do the same from the keyboard.
+
+The diff of a commit is always that commit's first parent against the commit — the pair the commit screen and the file log open — so a step and an open land on the same tabs. What the walk follows depends on what the tab shows:
+
+| The tab shows | `←` / `→` walk |
+| --- | --- |
+| one file | that file's own history (`git log --follow`), so a commit that never touched the file is skipped |
+| a list of files (the `## files` of a commit, or several status rows) | the repository's first-parent history, one whole commit per step — the tab is named `<sha8> — <n>`, one file included, because the commit is what it shows |
+| the working tree (a status diff) | up to the last commit that touched the file (or the last commit at all, for a list), and back down to the working tree |
+
+The choice is made once, when the walk starts, and every step keeps it: a commit that changed three files can be followed by one that changed a single file, and the walk still goes on through the commits instead of turning into that file's history.
+
+A root commit, the working tree as the newest end, and a commit off the checked-out branch's first-parent chain have no arrow to show: they are greyed out rather than guessed at. The arrows appear only where the two sides really are a commit and its parent (or the working tree and `HEAD`/the index) — a compare range `A..B`, a stash, a conflict stage and a diff of two files on disk get none, because there is no commit to step to.
+
+VS Code cannot change the sides of an open diff, so a step opens the neighbouring pair as a new tab in the same column and closes the one it replaced. The tab count stays at one and the cursor line is carried over; the tab itself ends up at the end of its group.
 
 ## Palette and settings
 
-Three commands are intentionally visible in the command palette: **Git Helm: Status**, **Git Helm: Actions for Current File** and **Git Helm: Interface Language**. Everything else is deliberately hidden — the buffer keys are the interface, and the `editor/context` menu exposes the actions that make sense with a right click.
+Three commands are intentionally visible in the command palette: **Git Helm: Status**, **Git Helm: Actions for Current File** and **Git Helm: Interface Language**. Everything else is deliberately hidden — the keys of a screen are the interface, and the `editor/context` menu exposes the actions that make sense with a right click.
 
-The interface language can be `en`, `ru` or `zh`; it is stored per user and applied to every buffer on the spot.
+The interface language can be `en`, `ru` or `zh`; it is stored per user and applied to every panel on the spot.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `githelm.log.dateFormat` | `%Y-%m-%d %H:%M` | date format for the history screen, passed to `git --date=format:…` |
-| `githelm.ui.hintColumn` | `94` | column where the right-hand key hints start — widen it for very wide windows |
 | `githelm.log.includeAllRefs` | `false` | show every ref in history, including `refs/stash` and refs created by other tools |
 | `githelm.forge.kind` | `auto` | `auto` / `github` / `gitlab` — `auto` reads the forge from the remote host name |
 | `githelm.forge.githubToken` | — | GitHub token for the pull request list; falls back to `GITHUB_TOKEN` |
@@ -273,7 +294,7 @@ All colors are theme-aware and can be overridden in `workbench.colorCustomizatio
 
 A section is one colour: its heading and the paths of its rows share it — `githelm.staged` sage, `githelm.unstaged` honey, `githelm.untracked` coral, `githelm.conflict` for a merge in progress — so "already staged" reads off the list itself. `githelm.section` stays the neutral colour for headings that have no section of their own (stash, last commits, the other buffers), while the `remotes` and `worktrees` blocks of the right-hand column share `githelm.remotes` — `githelm.worktrees` carries the same value, because they stand one under the other and read as one block, and the `stash` block under them keeps the neutral `githelm.section`. The same brightness is used for the stash file list and the submodule paths (`githelm.path`), while the `##` marker, the hairline under the key hints and the trailing details stay quiet (`githelm.rule`, `githelm.meta`), and the hints themselves are comment-grey (`githelm.help`). On the divergence label the `+ahead` counter takes the add colour and `−behind` the delete colour, so the direction is readable at a glance.
 
-The text of a row is left to the editor and is not painted at all: a stash message, a remote URL and a worktree path read at the same weight as the subject of a commit in the history buffer. What the row *is* stays coloured — the stash ref, the remote name and the short hash keep `githelm.branch`, and the branch-to-remote mapping (`origin/main: +2 −1`) has its own coral, `githelm.upstream`, so it is not mistaken for the URL above it or for a ref of a commit.
+The text of a row is not painted at all: a stash message, a remote URL and a worktree path read at the same weight as the subject of a commit in the history buffer. What the row *is* stays coloured — the stash ref, the remote name and the short hash keep `githelm.branch`, and the branch-to-remote mapping (`origin/main: +2 −1`) has its own coral, `githelm.upstream`, so it is not mistaken for the URL above it or for a ref of a commit.
 
 Available ids: `githelm.added`, `githelm.modified`, `githelm.deleted`, `githelm.conflict`, `githelm.hash`, `githelm.date`, `githelm.author`, `githelm.refs`, `githelm.upstream`, `githelm.graph`, `githelm.hunk`, `githelm.meta`, `githelm.path`, `githelm.section`, `githelm.staged`, `githelm.unstaged`, `githelm.untracked`, `githelm.remotes`, `githelm.worktrees`, `githelm.branch`, `githelm.help`, `githelm.rule`.
 
@@ -288,9 +309,9 @@ npm run typecheck    # tsc --noEmit
 npm test             # build the extension and the test tree, validate the manifest, run the suite
 ```
 
-`npm test` runs **422 tests** (417 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
+`npm test` runs **666 tests** (661 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
 
-The screenshots in this README are not captures of a window: `scripts/make-screenshots.mjs` asks the real `renderStatus` and `renderLog` for the text and the spans, and `scripts/make-screenshots.py` paints them with the values from `contributes.colors` and the span map in `views/highlight.ts`. Only the frame — the tab strip and the caret — is drawn by hand, so an image cannot show a layout or a colour the buffers do not actually produce.
+The screenshots in this README are demos of the status and history screens, kept in `media/demo/`. They are snapshots, not captures produced by the test suite, so a layout change means making new ones by hand.
 
 ## Releases
 
@@ -311,14 +332,14 @@ src/
   extension.ts        commands, status bar, activation
   git/                thin typed wrappers over the git CLI (status, log, diff, stage,
                       stash, tags, remotes, ops, rewrite, conflicts, compare, …)
-  views/              one module per buffer: status, diff, log, branches, tags,
-                      submodules, commit, conflict, stash, action log, file
-                      history, compare
+  views/              one module per screen: the renderers (`*Doc.ts` for the
+                      commit, stash, conflict and file-history screens,
+                      `initRender.ts` for `git init`), the shared row labels,
+                      the log filters and the blame gutter
   forge/              GitHub / GitLab: remote URL parsing and the REST calls
-  views/columns.ts    right-hand hint column shared by every screen
-  views/*Render.ts    the buffers as plain text + spans, so the same string can be
-                      printed without an editor
-  views/highlight.ts  colour spans from the theme
+  webview/            the panels: the host side (`panel.ts`, `keys.ts`), the models
+                      that draw a screen, and the browser client
+  views/highlight.ts  span colours for the blame editor
   i18n/               en / ru / zh dictionaries with a shared key set
   fs/                 editable virtual documents (commit messages)
   rebase/             GIT_EDITOR bridge for interactive rebase
@@ -326,11 +347,11 @@ src/
 media/shims/          git editor shims used by the rebase bridge
 ```
 
-Buffers are virtual documents under the `githelm:` scheme: read-only text that normal editor features — search, splits, minimap, navigation, folding — work on. Edits are applied by re-rendering the document instead of patching the editor, so the buffer always shows what git actually reports.
+A panel never patches itself: it is redrawn from what git just reported, and a key goes to the host as a message, so the panel cannot drift from the repository. The one virtual document left is the blame (`githelm:` scheme), which has to be a real editor to be highlighted by the file’s grammar.
 
 ## Limitations
 
-- One repository at a time: the first one found from the active buffer (or the workspace root).
+- One repository at a time: the first one found from the active panel (or the workspace root).
 - Fixup and autosquash go through a `GIT_EDITOR` bridge: the todo list can be edited, but there is no per-step progress and a conflict in the middle of the rebase is not guided.
 - Conflict resolution is per file (ours / theirs / base) or through the merge editor; there is no hunk-level three-way editor.
 - A stash diff is per file — you cannot apply a single hunk from a stash.

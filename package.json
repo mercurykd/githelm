@@ -2,7 +2,7 @@
   "name": "githelm",
   "displayName": "Git Helm",
   "description": "Keyboard-driven git client for VS Code: status buffer, log graph, staging, diffs, stash, rebase and worktrees — GitSavvy-style, one screen per task.",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "mercurykd",
   "license": "MIT",
   "repository": {
@@ -283,296 +283,40 @@
         "title": "Git Helm: Actions for Current File"
       },
       {
-        "command": "githelm.status.refresh",
-        "title": "Git Helm: Refresh Buffer"
-      },
-      {
-        "command": "githelm.status.commit",
-        "title": "Git Helm: Commit"
-      },
-      {
-        "command": "githelm.status.amend",
-        "title": "Git Helm: Amend Last Commit"
-      },
-      {
-        "command": "githelm.status.stage",
-        "title": "Git Helm: Stage"
-      },
-      {
-        "command": "githelm.status.unstage",
-        "title": "Git Helm: Unstage"
-      },
-      {
-        "command": "githelm.status.stageAll",
-        "title": "Git Helm: Stage All"
-      },
-      {
-        "command": "githelm.status.unstageAll",
-        "title": "Git Helm: Unstage All"
-      },
-      {
-        "command": "githelm.status.diff",
-        "title": "Git Helm: File Diff"
-      },
-      {
-        "command": "githelm.status.discard",
-        "title": "Git Helm: Discard File Changes"
-      },
-      {
-        "command": "githelm.status.ignore",
-        "title": "Git Helm: Add to .gitignore"
-      },
-      {
         "command": "githelm.repo.init",
         "title": "Git Helm: Initialize Repository"
       },
       {
-        "command": "githelm.status.openFile",
-        "title": "Git Helm: Open File"
+        "command": "githelm.diff.walkPrev",
+        "title": "Git Helm: Previous Commit in Diff",
+        "icon": "$(arrow-left)",
+        "enablement": "githelm.diffPrev"
       },
       {
-        "command": "githelm.status.stash",
-        "title": "Git Helm: Stash Changes"
-      },
-      {
-        "command": "githelm.status.stashApply",
-        "title": "Git Helm: Apply Stash"
-      },
-      {
-        "command": "githelm.status.stashPop",
-        "title": "Git Helm: Pop Stash"
-      },
-      {
-        "command": "githelm.status.delete",
-        "title": "Git Helm: Delete Entry"
-      },
-      {
-        "command": "githelm.status.edit",
-        "title": "Git Helm: Edit Entry"
-      },
-      {
-        "command": "githelm.status.tagCreate",
-        "title": "Git Helm: Create Tag"
-      },
-      {
-        "command": "githelm.log.tagCreate",
-        "title": "Git Helm: Create Tag on Commit"
-      },
-      {
-        "command": "githelm.status.remoteAdd",
-        "title": "Git Helm: Add Remote"
-      },
-      {
-        "command": "githelm.status.worktreeAdd",
-        "title": "Git Helm: Add Worktree"
-      },
-      {
-        "command": "githelm.status.worktreePrune",
-        "title": "Git Helm: Prune Worktrees"
-      },
-      {
-        "command": "githelm.status.worktreeOpen",
-        "title": "Git Helm: Open Worktree in New Window"
-      },
-      {
-        "command": "githelm.status.worktreeOpenHere",
-        "title": "Git Helm: Open Worktree in This Window"
-      },
-      {
-        "command": "githelm.status.branches",
-        "title": "Git Helm: Branches"
-      },
-      {
-        "command": "githelm.diff.stageSelection",
-        "title": "Git Helm: Stage Selection or Hunk"
-      },
-      {
-        "command": "githelm.diff.unstageSelection",
-        "title": "Git Helm: Unstage Selection or Hunk"
-      },
-      {
-        "command": "githelm.diff.refresh",
-        "title": "Git Helm: Refresh Diff"
-      },
-      {
-        "command": "githelm.diff.openFile",
-        "title": "Git Helm: Open File at Line"
+        "command": "githelm.diff.walkNext",
+        "title": "Git Helm: Next Commit in Diff",
+        "icon": "$(arrow-right)",
+        "enablement": "githelm.diffNext"
       },
       {
         "command": "githelm.log.open",
         "title": "Git Helm: Commit History"
       },
       {
-        "command": "githelm.log.refresh",
-        "title": "Git Helm: Refresh History"
-      },
-      {
-        "command": "githelm.log.toggleAll",
-        "title": "Git Helm: History: All Branches"
-      },
-      {
-        "command": "githelm.log.showCommit",
-        "title": "Git Helm: Show Commit"
-      },
-      {
-        "command": "githelm.log.createBranch",
-        "title": "Git Helm: Branch from Commit"
-      },
-      {
-        "command": "githelm.log.checkout",
-        "title": "Git Helm: Checkout Commit Branch"
-      },
-      {
-        "command": "githelm.log.fixup",
-        "title": "Git Helm: Fixup into Commit"
-      },
-      {
-        "command": "githelm.log.search",
-        "title": "Git Helm: Jump to History Filters"
-      },
-      {
-        "command": "githelm.log.cherryPick",
-        "title": "Git Helm: Cherry-pick Commit"
-      },
-      {
-        "command": "githelm.log.revert",
-        "title": "Git Helm: Revert Commit"
-      },
-      {
         "command": "githelm.branches.open",
         "title": "Git Helm: Branches Screen"
-      },
-      {
-        "command": "githelm.branches.checkout",
-        "title": "Git Helm: Checkout Branch"
-      },
-      {
-        "command": "githelm.branches.create",
-        "title": "Git Helm: Create Branch"
-      },
-      {
-        "command": "githelm.branches.rename",
-        "title": "Git Helm: Rename Branch"
-      },
-      {
-        "command": "githelm.branches.delete",
-        "title": "Git Helm: Delete Branch"
-      },
-      {
-        "command": "githelm.branches.upstream",
-        "title": "Git Helm: Set Upstream"
-      },
-      {
-        "command": "githelm.branches.toggleRemote",
-        "title": "Git Helm: Toggle Remote Branches"
-      },
-      {
-        "command": "githelm.branches.refresh",
-        "title": "Git Helm: Refresh Branches"
       },
       {
         "command": "githelm.rebase.interactive",
         "title": "Git Helm: Interactive Rebase"
       },
       {
-        "command": "githelm.buffer.close",
-        "title": "Git Helm: Close Buffer"
-      },
-      {
-        "command": "githelm.help",
-        "title": "Git Helm: Key Help"
-      },
-      {
-        "command": "githelm.status.fetch",
-        "title": "Git Helm: Fetch"
-      },
-      {
-        "command": "githelm.status.pull",
-        "title": "Git Helm: Pull"
-      },
-      {
-        "command": "githelm.status.push",
-        "title": "Git Helm: Push"
-      },
-      {
-        "command": "githelm.status.reset",
-        "title": "Git Helm: Reset"
-      },
-      {
-        "command": "githelm.status.abortMerge",
-        "title": "Git Helm: Abort Merge"
-      },
-      {
-        "command": "githelm.log.reset",
-        "title": "Git Helm: Reset to Commit"
-      },
-      {
-        "command": "githelm.branches.merge",
-        "title": "Git Helm: Merge Branch"
-      },
-      {
-        "command": "githelm.branches.deleteRemote",
-        "title": "Git Helm: Delete Remote Branch"
-      },
-      {
-        "command": "githelm.branches.reset",
-        "title": "Git Helm: Reset Branch"
-      },
-      {
         "command": "githelm.tags.open",
         "title": "Git Helm: Tags"
       },
       {
-        "command": "githelm.tags.refresh",
-        "title": "Git Helm: Refresh Tags"
-      },
-      {
-        "command": "githelm.tags.show",
-        "title": "Git Helm: Show Tag Commit"
-      },
-      {
-        "command": "githelm.tags.create",
-        "title": "Git Helm: Create Tag on HEAD"
-      },
-      {
-        "command": "githelm.tags.move",
-        "title": "Git Helm: Move Tag to HEAD"
-      },
-      {
-        "command": "githelm.tags.push",
-        "title": "Git Helm: Push Tag"
-      },
-      {
-        "command": "githelm.tags.deleteRemote",
-        "title": "Git Helm: Delete Tag on Remote"
-      },
-      {
-        "command": "githelm.tags.delete",
-        "title": "Git Helm: Delete Tag"
-      },
-      {
         "command": "githelm.submodules.open",
         "title": "Git Helm: Submodules"
-      },
-      {
-        "command": "githelm.submodules.refresh",
-        "title": "Git Helm: Refresh Submodules"
-      },
-      {
-        "command": "githelm.submodules.enter",
-        "title": "Git Helm: Open Submodule"
-      },
-      {
-        "command": "githelm.submodules.update",
-        "title": "Git Helm: Update Submodule"
-      },
-      {
-        "command": "githelm.submodules.updateRemote",
-        "title": "Git Helm: Update Submodule From Remote"
-      },
-      {
-        "command": "githelm.forge.pulls",
-        "title": "Git Helm: Pull Requests"
       },
       {
         "command": "githelm.forge.createPull",
@@ -587,28 +331,16 @@
         "title": "Git Helm: Action Log"
       },
       {
-        "command": "githelm.actionLog.clear",
-        "title": "Git Helm: Clear Action Log"
-      },
-      {
-        "command": "githelm.actionLog.refresh",
-        "title": "Git Helm: Refresh Action Log"
-      },
-      {
-        "command": "githelm.log.sort",
-        "title": "Git Helm: Cycle History Sort"
-      },
-      {
-        "command": "githelm.log.compare",
-        "title": "Git Helm: Compare Commits"
-      },
-      {
-        "command": "githelm.log.resetFilters",
-        "title": "Git Helm: Reset History Filters"
-      },
-      {
         "command": "githelm.stash.fileDiff",
         "title": "Git Helm: Diff File in Stash"
+      },
+      {
+        "command": "githelm.commit.fileDiff",
+        "title": "Git Helm: Diff File in Commit"
+      },
+      {
+        "command": "githelm.commit.filesAtRef",
+        "title": "Git Helm: Open Files at Commit"
       },
       {
         "command": "githelm.conflict.ours",
@@ -637,579 +369,32 @@
         "key": "alt+g"
       },
       {
-        "command": "githelm.status.stage",
-        "key": "s",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
+        "command": "githelm.diff.walkPrev",
+        "key": "alt+[",
+        "when": "editorTextFocus && githelm.diffWalk"
       },
       {
-        "command": "githelm.status.unstage",
-        "key": "u",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.stageAll",
-        "key": "alt+s",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.unstageAll",
-        "key": "alt+u",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.diff",
-        "key": "d",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.discard",
-        "key": "shift+d",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.ignore",
-        "key": "i",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.openFile",
-        "key": "enter",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.refresh",
-        "key": "r",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.commit",
-        "key": "c",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.amend",
-        "key": "m",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.branches",
-        "key": "b",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.stash",
-        "key": "z",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.stashApply",
-        "key": "a",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.stashPop",
-        "key": "p",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.delete",
-        "key": "x",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.edit",
-        "key": "e",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.tagCreate",
-        "key": "t",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.remoteAdd",
-        "key": "shift+a",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.worktreeAdd",
-        "key": "n",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.worktreePrune",
-        "key": "shift+w",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.worktreeOpen",
-        "key": "shift+enter",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.worktreeOpenHere",
-        "key": "alt+enter",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.diff.stageSelection",
-        "key": "s",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'diff-unstaged'"
-      },
-      {
-        "command": "githelm.diff.unstageSelection",
-        "key": "u",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'diff-staged'"
-      },
-      {
-        "command": "githelm.diff.refresh",
-        "key": "r",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view =~ /^diff-/"
-      },
-      {
-        "command": "githelm.diff.openFile",
-        "key": "enter",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view =~ /^diff-/"
-      },
-      {
-        "command": "githelm.log.showCommit",
-        "key": "enter",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.log.createBranch",
-        "key": "n",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.log.tagCreate",
-        "key": "t",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.log.checkout",
-        "key": "c",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.log.cherryPick",
-        "key": "shift+c",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.log.revert",
-        "key": "shift+v",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.log.fixup",
-        "key": "f",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.log.toggleAll",
-        "key": "a",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.log.search",
-        "key": "/",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.log.refresh",
-        "key": "r",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.branches.checkout",
-        "key": "enter",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'branches'"
-      },
-      {
-        "command": "githelm.branches.create",
-        "key": "n",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'branches'"
-      },
-      {
-        "command": "githelm.branches.rename",
-        "key": "e",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'branches'"
-      },
-      {
-        "command": "githelm.branches.upstream",
-        "key": "u",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'branches'"
-      },
-      {
-        "command": "githelm.branches.delete",
-        "key": "x",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'branches'"
-      },
-      {
-        "command": "githelm.branches.toggleRemote",
-        "key": "shift+r",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'branches'"
-      },
-      {
-        "command": "githelm.branches.refresh",
-        "key": "r",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'branches'"
-      },
-      {
-        "command": "githelm.help",
-        "key": "h",
-        "when": "editorTextFocus && resourceScheme == 'githelm'"
-      },
-      {
-        "command": "githelm.buffer.close",
-        "key": "q",
-        "when": "editorTextFocus && resourceScheme == 'githelm'"
-      },
-      {
-        "command": "githelm.status.fetch",
-        "key": "f",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.pull",
-        "key": "shift+p",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.push",
-        "key": "shift+u",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.reset",
-        "key": "shift+r",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.status.abortMerge",
-        "key": "shift+m",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.tags.open",
-        "key": "shift+t",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view != 'conflict'"
-      },
-      {
-        "command": "githelm.submodules.open",
-        "key": "shift+s",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.forge.pulls",
-        "key": "shift+f",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'status'"
-      },
-      {
-        "command": "githelm.submodules.enter",
-        "key": "enter",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'submodules'"
-      },
-      {
-        "command": "githelm.submodules.update",
-        "key": "u",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'submodules'"
-      },
-      {
-        "command": "githelm.submodules.updateRemote",
-        "key": "shift+u",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'submodules'"
-      },
-      {
-        "command": "githelm.submodules.refresh",
-        "key": "r",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'submodules'"
-      },
-      {
-        "command": "githelm.log.reset",
-        "key": "shift+r",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.branches.merge",
-        "key": "m",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'branches'"
-      },
-      {
-        "command": "githelm.branches.deleteRemote",
-        "key": "shift+d",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'branches'"
-      },
-      {
-        "command": "githelm.branches.reset",
-        "key": "shift+s",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'branches'"
-      },
-      {
-        "command": "githelm.tags.show",
-        "key": "enter",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'tags'"
-      },
-      {
-        "command": "githelm.tags.create",
-        "key": "t",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'tags'"
-      },
-      {
-        "command": "githelm.tags.move",
-        "key": "e",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'tags'"
-      },
-      {
-        "command": "githelm.tags.push",
-        "key": "shift+u",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'tags'"
-      },
-      {
-        "command": "githelm.tags.deleteRemote",
-        "key": "shift+d",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'tags'"
-      },
-      {
-        "command": "githelm.tags.delete",
-        "key": "x",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'tags'"
-      },
-      {
-        "command": "githelm.tags.refresh",
-        "key": "r",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'tags'"
-      },
-      {
-        "command": "githelm.actionLog",
-        "key": "l",
-        "when": "editorTextFocus && resourceScheme == 'githelm'"
-      },
-      {
-        "command": "githelm.actionLog.clear",
-        "key": "c",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'actionlog'"
-      },
-      {
-        "command": "githelm.actionLog.refresh",
-        "key": "r",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'actionlog'"
-      },
-      {
-        "command": "githelm.log.sort",
-        "key": "s",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.log.compare",
-        "key": "d",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.log.resetFilters",
-        "key": "x",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'log'"
-      },
-      {
-        "command": "githelm.log.open",
-        "key": "g",
-        "when": "editorTextFocus && resourceScheme == 'githelm'"
-      },
-      {
-        "command": "githelm.branches.open",
-        "key": "b",
-        "when": "editorTextFocus && resourceScheme == 'githelm'"
-      },
-      {
-        "command": "githelm.tags.open",
-        "key": "t",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view != 'status' && githelm.view != 'log' && githelm.view != 'tags'"
-      },
-      {
-        "command": "githelm.stash.fileDiff",
-        "key": "d",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'stashfiles'"
-      },
-      {
-        "command": "githelm.branches.checkout",
-        "key": "c",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'branches'"
-      },
-      {
-        "command": "githelm.conflict.ours",
-        "key": "o",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'conflict'"
-      },
-      {
-        "command": "githelm.conflict.theirs",
-        "key": "shift+t",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'conflict'"
-      },
-      {
-        "command": "githelm.conflict.base",
-        "key": "shift+b",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'conflict'"
-      },
-      {
-        "command": "githelm.conflict.mergeEditor",
-        "key": "m",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'conflict'"
-      },
-      {
-        "command": "githelm.conflict.resolve",
-        "key": "s",
-        "when": "editorTextFocus && resourceScheme == 'githelm' && githelm.view == 'conflict'"
+        "command": "githelm.diff.walkNext",
+        "key": "alt+]",
+        "when": "editorTextFocus && githelm.diffWalk"
       }
     ],
     "menus": {
+      "editor/title": [
+        {
+          "command": "githelm.diff.walkPrev",
+          "when": "githelm.diffWalk",
+          "group": "navigation@1"
+        },
+        {
+          "command": "githelm.diff.walkNext",
+          "when": "githelm.diffWalk",
+          "group": "navigation@2"
+        }
+      ],
       "commandPalette": [
         {
-          "command": "githelm.status.refresh",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.commit",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.amend",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.stage",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.unstage",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.stageAll",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.unstageAll",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.diff",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.discard",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.openFile",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.stash",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.stashApply",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.stashPop",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.delete",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.edit",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.tagCreate",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.remoteAdd",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.worktreeAdd",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.worktreePrune",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.worktreeOpen",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.worktreeOpenHere",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.branches",
-          "when": "false"
-        },
-        {
-          "command": "githelm.diff.stageSelection",
-          "when": "false"
-        },
-        {
-          "command": "githelm.diff.unstageSelection",
-          "when": "false"
-        },
-        {
-          "command": "githelm.diff.refresh",
-          "when": "false"
-        },
-        {
-          "command": "githelm.diff.openFile",
-          "when": "false"
-        },
-        {
           "command": "githelm.log.open",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.refresh",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.toggleAll",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.showCommit",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.createBranch",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.tagCreate",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.checkout",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.fixup",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.search",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.cherryPick",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.revert",
           "when": "false"
         },
         {
@@ -1217,79 +402,7 @@
           "when": "false"
         },
         {
-          "command": "githelm.branches.checkout",
-          "when": "false"
-        },
-        {
-          "command": "githelm.branches.create",
-          "when": "false"
-        },
-        {
-          "command": "githelm.branches.rename",
-          "when": "false"
-        },
-        {
-          "command": "githelm.branches.delete",
-          "when": "false"
-        },
-        {
-          "command": "githelm.branches.upstream",
-          "when": "false"
-        },
-        {
-          "command": "githelm.branches.toggleRemote",
-          "when": "false"
-        },
-        {
-          "command": "githelm.branches.refresh",
-          "when": "false"
-        },
-        {
           "command": "githelm.rebase.interactive",
-          "when": "false"
-        },
-        {
-          "command": "githelm.buffer.close",
-          "when": "false"
-        },
-        {
-          "command": "githelm.help",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.fetch",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.pull",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.push",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.reset",
-          "when": "false"
-        },
-        {
-          "command": "githelm.status.abortMerge",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.reset",
-          "when": "false"
-        },
-        {
-          "command": "githelm.branches.merge",
-          "when": "false"
-        },
-        {
-          "command": "githelm.branches.deleteRemote",
-          "when": "false"
-        },
-        {
-          "command": "githelm.branches.reset",
           "when": "false"
         },
         {
@@ -1297,55 +410,7 @@
           "when": "false"
         },
         {
-          "command": "githelm.tags.refresh",
-          "when": "false"
-        },
-        {
-          "command": "githelm.tags.show",
-          "when": "false"
-        },
-        {
-          "command": "githelm.tags.create",
-          "when": "false"
-        },
-        {
-          "command": "githelm.tags.move",
-          "when": "false"
-        },
-        {
-          "command": "githelm.tags.delete",
-          "when": "false"
-        },
-        {
-          "command": "githelm.tags.push",
-          "when": "false"
-        },
-        {
-          "command": "githelm.tags.deleteRemote",
-          "when": "false"
-        },
-        {
           "command": "githelm.submodules.open",
-          "when": "false"
-        },
-        {
-          "command": "githelm.submodules.refresh",
-          "when": "false"
-        },
-        {
-          "command": "githelm.submodules.enter",
-          "when": "false"
-        },
-        {
-          "command": "githelm.submodules.update",
-          "when": "false"
-        },
-        {
-          "command": "githelm.submodules.updateRemote",
-          "when": "false"
-        },
-        {
-          "command": "githelm.forge.pulls",
           "when": "false"
         },
         {
@@ -1357,27 +422,15 @@
           "when": "false"
         },
         {
-          "command": "githelm.actionLog.clear",
-          "when": "false"
-        },
-        {
-          "command": "githelm.actionLog.refresh",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.sort",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.compare",
-          "when": "false"
-        },
-        {
-          "command": "githelm.log.resetFilters",
-          "when": "false"
-        },
-        {
           "command": "githelm.stash.fileDiff",
+          "when": "false"
+        },
+        {
+          "command": "githelm.commit.fileDiff",
+          "when": "false"
+        },
+        {
+          "command": "githelm.commit.filesAtRef",
           "when": "false"
         },
         {
@@ -1401,89 +454,28 @@
           "when": "false"
         },
         {
-          "command": "githelm.status.ignore",
+          "command": "githelm.repo.init",
           "when": "false"
         },
         {
-          "command": "githelm.repo.init",
+          "command": "githelm.diff.walkPrev",
+          "when": "false"
+        },
+        {
+          "command": "githelm.diff.walkNext",
           "when": "false"
         }
       ],
       "editor/context": [
         {
-          "command": "githelm.status.stage",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'status'",
-          "group": "githelm@1"
+          "command": "githelm.diff.walkPrev",
+          "when": "githelm.diffWalk",
+          "group": "navigation@1"
         },
         {
-          "command": "githelm.status.unstage",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'status'",
-          "group": "githelm@2"
-        },
-        {
-          "command": "githelm.status.stageAll",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'status'",
-          "group": "githelm@2.1"
-        },
-        {
-          "command": "githelm.status.unstageAll",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'status'",
-          "group": "githelm@2.2"
-        },
-        {
-          "command": "githelm.status.commit",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'status'",
-          "group": "githelm@3"
-        },
-        {
-          "command": "githelm.status.stash",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'status'",
-          "group": "githelm@4"
-        },
-        {
-          "command": "githelm.status.ignore",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'status'",
-          "group": "githelm@5"
-        },
-        {
-          "command": "githelm.diff.stageSelection",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'diff-unstaged'",
-          "group": "githelm@1"
-        },
-        {
-          "command": "githelm.diff.unstageSelection",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'diff-staged'",
-          "group": "githelm@1"
-        },
-        {
-          "command": "githelm.diff.openFile",
-          "when": "resourceScheme == 'githelm' && githelm.view =~ /^diff-/",
-          "group": "githelm@2"
-        },
-        {
-          "command": "githelm.log.showCommit",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'log'",
-          "group": "githelm@1"
-        },
-        {
-          "command": "githelm.log.cherryPick",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'log'",
-          "group": "githelm@2"
-        },
-        {
-          "command": "githelm.log.revert",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'log'",
-          "group": "githelm@2"
-        },
-        {
-          "command": "githelm.log.fixup",
-          "when": "resourceScheme == 'githelm' && githelm.view == 'log'",
-          "group": "githelm@3"
-        },
-        {
-          "command": "githelm.help",
-          "when": "resourceScheme == 'githelm'",
-          "group": "githelm@9"
+          "command": "githelm.diff.walkNext",
+          "when": "githelm.diffWalk",
+          "group": "navigation@2"
         }
       ]
     },
@@ -1494,12 +486,6 @@
           "type": "string",
           "default": "%Y-%m-%d %H:%M",
           "markdownDescription": "Date format for the history screen, passed to `git --date=format:…`."
-        },
-        "githelm.ui.hintColumn": {
-          "type": "number",
-          "default": 94,
-          "minimum": 30,
-          "markdownDescription": "Column where the right-hand key hints start. A text buffer cannot stick to the viewport edge, so widen this for very wide windows."
         },
         "githelm.log.includeAllRefs": {
           "type": "boolean",
@@ -1530,13 +516,17 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run build",
+    "vscode:prepublish": "npm run build:all",
     "build": "tsc -p tsconfig.dist.json && node scripts/copy-shims.cjs",
     "watch": "tsc -p tsconfig.dist.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "validate": "node scripts/validate-manifest.cjs",
     "build:tests": "tsc -p tsconfig.build.json",
-    "test": "npm run build && npm run build:tests && npm run validate && node --test --experimental-test-isolation=none \"build/test/*.test.js\""
+    "test": "npm run build:all && npm run build:tests && npm run validate && node --test --experimental-test-isolation=none \"build/test/*.test.js\"",
+    "build:webview": "tsc -p tsconfig.webview.json",
+    "build:all": "npm run clean && npm run build && npm run build:webview",
+    "preflight": "node scripts/preflight.cjs",
+    "clean": "node scripts/clean.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

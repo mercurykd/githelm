@@ -51,14 +51,27 @@ describe('manifest and command handlers', () => {
     assert.deepEqual(visible, ['githelm.file.actions', 'githelm.language', 'githelm.status.open']);
   });
 
-  it('routes each githelm view to its own key bindings', () => {
-    const views = new Set(
-      (pkg.contributes?.keybindings ?? [])
-        .map((entry: { when?: string }) => /githelm\.view == '([^']+)'/.exec(entry.when ?? '')?.[1])
-        .filter(Boolean)
+  it('opens a commit’s files as they were at that commit with t', () => {
+    // `d` shows what the commit changed; `t` shows the same files as the commit left them,
+    // read out of the object database instead of the working tree. Both are panel keys
+    // now, so the key is the panel's — and the action it posts is what must exist.
+    assert.ok(registered.has('githelm.commit.filesAtRef'));
+    assert.match(source, /action === 'filesAtRef'/);
+    assert.match(source, /await openFilesAtRef\(state\.repoPath, files, state\.sha\)/);
+  });
+
+  it('keeps the whole UI in panels: no key is bound to a text screen', () => {
+    // The keys of a screen live inside its webview, so the manifest carries only the
+    // three keys that mean something outside one: the way in and the two diff arrows.
+    const keys = (pkg.contributes?.keybindings ?? []).map((entry: { key: string }) => entry.key);
+    assert.deepEqual(keys.sort(), ['alt+[', 'alt+]', 'alt+g']);
+    const views = (pkg.contributes?.keybindings ?? []).filter((entry: { when?: string }) =>
+      /githelm\.view/.test(entry.when ?? '')
     );
-    for (const view of ['status', 'log', 'branches', 'tags', 'submodules']) {
-      assert.ok(views.has(view), `no key bindings for the ${view} view`);
-    }
+    assert.deepEqual(views, [], 'a `githelm.view` binding belongs to a screen that no longer exists');
+    const buffers = (pkg.contributes?.commands ?? []).filter(
+      (entry: { command: string }) => entry.command.startsWith('githelm.webview.') || entry.command === 'githelm.ui.toggle'
+    );
+    assert.deepEqual(buffers, [], 'the UI switch is gone: there is nothing to switch to');
   });
 });
