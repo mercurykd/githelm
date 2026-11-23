@@ -16,8 +16,8 @@ Every screen is a webview panel — no trees, no mouse, and no second interface 
 | --- | --- |
 | **Status** (`alt+g`) | staged / unstaged / untracked / conflicts, stage a file, a whole section or the selection, commit, amend, stash, remotes, worktrees, fetch/pull/push, reset, abort merge, diff, open file |
 | **Diff** | stage or unstage the hunk under the cursor or the selected lines, `Enter` opens the file at that line |
-| **History** | ASCII graph, commit details, branch/checkout/cherry-pick/revert, fixup + autosquash, filters by message/author/date and `git log -S` / `-G`, sort cycles, compare two commits, reset to a commit |
-| **Branches** | local and remote (toggle), upstream and divergence, checkout / create / rename / delete / set-upstream / merge / reset |
+| **History** | ASCII graph, commit details, branch/checkout/cherry-pick/revert, fixup + autosquash, filters by message/author/branch/date and `git log -S` / `-G`, sort cycles, compare two commits, reset to a commit |
+| **Branches** | local and remote (toggle), upstream and divergence, checkout / create / rename / delete / set-upstream / merge / reset, and `G` opens the graph of one branch |
 | **Tags** | list, show the commit, create, move to `HEAD`, delete |
 | **Commit** | metadata, stat and the full patch of the commit you are writing |
 | **File** | `git log --follow` and `git blame` for the current file |
@@ -111,7 +111,7 @@ The staged, unstaged and untracked sections are always on screen, even when empt
 
 The status header is `D:/work/app — status` — the path, the em dash, the screen — with the screen's key hints in their column at the middle, exactly like every other header; under it, as the first block of the column, two lines: the branch with its tracking state (`origin/main: +2 −1` — the counters that moved, a counter at zero is left out) and `HEAD`. The repository is the title's own word and the remote is a block of its own, so neither is repeated among those lines. The `remotes`, `worktrees` and `stash` blocks share one column on the right, in that order, beside the file sections: the files keep the left half, a six-column gutter separates the two halves, and one blank row separates two blocks of the column the way it does on the file side. A title of the column can share a line with a title of the file side (`## staged` beside `## remotes`); the cursor column decides which of the two a key acts on.
 
-Every hint is one `key label` pair, and the line wraps when the panel is narrow: the header is as wide as the panel, so no key list has to be read in two places. The `remotes` block lists every remote with its URL; the "last commits" block always shows subject, author and date.
+Every hint is one `key label` pair, and the line wraps when the panel is narrow: the header is as wide as the panel, so no key list has to be read in two places. The `remotes` block lists every remote with its URL; the "last commits" block always shows subject, author and date, with the tags and branches of a commit as the first words of its message (`[HEAD -> main tag: v0.0.4] feat: …`) — the tag is part of the message, not a column, so a long message wraps under the message column and the tags are never cut short.
 
 The `stash` block lists the stashes of the repository and is drawn even when there are none, because its keys (`z stash`, `enter files`, `d diff`, `a apply`, `p pop`, `x drop`) are the only place the status buffer says how to make the first one. `z` decides what to stash from the cursors: files under them go in and nothing else, so no question is asked. With the cursor on a section title the whole section goes in; with no file under the cursor a list offers `--staged` (the index alone) and `-u` (untracked files as well), at most one of the two, and Enter with nothing picked stashes the working tree. Nothing is on by default: an untracked file is stashed only when `-u` says so.
 
@@ -148,7 +148,7 @@ The author column is shared with the history graph: its width is the longest log
 | `f` | fixup the staged changes into the commit, then autosquash |
 | `R` | reset to the commit (soft/mixed/hard) |
 | `a` | toggle all branches |
-| `/` | filters: message, author, date range, `git log -S` / `-G` |
+| `/` | filters: message, author, branch, date range, `git log -S` / `-G` |
 | `x` | clear the filters |
 | `s` | cycle the sort order (topo / date / author date) |
 | `d` | compare commits: one commit gives `<commit>..HEAD`, two give `A..B` or `A...B` with left/right markers — and the menu offers both directions (`B..A`) for the diff and for the history graph |
@@ -157,6 +157,8 @@ The author column is shared with the history graph: its width is the longest log
 | `r` | refresh |
 
 The commit screen the `Enter` opens keeps `d` for the change of every file under the selection and binds `t` to those same files as the commit left them: one read-only tab each, which is how a file is read at an old revision without checking it out.
+
+The `branch` filter reads the history of one branch the way `git log <branch>` does, so it narrows the walk instead of joining it: it takes a local branch, `origin/main`, a tag or a sha, and it wins over `a`, whose union of every ref would put the other branches back. Typing a branch turns `a` off, and pressing `a` with a branch set lifts the filter and turns every ref on — the last of the two asked for is the walk, so the title never claims `all branches` for a history `git log` was given one branch of. A name that resolves to nothing is answered with a notice — the input returns to the filter that is still set — rather than a page of `fatal: ambiguous argument`. Comparing a range clears the branch, because the range is then the walk.
 
 ### Branches
 
@@ -173,8 +175,11 @@ The commit screen the `Enter` opens keeps `d` for the change of every file under
 | `S` | reset the branch (soft/mixed/hard) |
 | `R` | toggle local/remote branches |
 | `g` | open the graph |
+| `G` | the graph of the branch under the cursor: the history screen opens with its `branch` filter already set to that branch — local, remote, a tag or a sha, the same field and the same `git log <branch>` behind it |
 | `T` | tags screen |
 | `r` | refresh |
+
+`G` is the bigger variant of the graph key, as the capital letters are on every screen: `g` opens the history of everything, `G` opens the same screen asked about one branch. Nothing is copied into a second view — the panel hands the branch name to the `branch` filter it already has, so the reader lands on a history `git log <branch>` produced, can read a commit, and clears the field to widen the walk. The row may be a remote branch (`origin/main`) or a tag; the name is what `git rev-parse` resolves, exactly as when it is typed into the field.
 
 ### Tags
 
@@ -309,7 +314,7 @@ npm run typecheck    # tsc --noEmit
 npm test             # build the extension and the test tree, validate the manifest, run the suite
 ```
 
-`npm test` runs **553 tests** (548 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
+`npm test` runs **565 tests** (560 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
 
 The screenshots in this README are demos of the status and history screens, kept in `media/demo/`. They are snapshots, not captures produced by the test suite, so a layout change means making new ones by hand.
 

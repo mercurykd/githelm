@@ -33,8 +33,9 @@ export interface LogRow {
   text: string;
   commit?: LogCommit;
   /**
-   * Column where the subject starts, so a screen can wrap a long subject under the
-   * subject column instead of under the graph. Unset on a graph-only row.
+   * Column where the message starts — the refs label included, when there is one — so a
+   * screen can wrap a long message under the message column instead of under the graph.
+   * Unset on a graph-only row.
    */
   subjectStart?: number;
   /** Spans use line indices relative to the rows array; the view offsets them. */
@@ -46,6 +47,13 @@ export interface LogFilter {
   grep?: string;
   /** `--author` — name or e-mail. */
   author?: string;
+  /**
+   * One branch's history, the way `git log <branch>` reads it: anything `git rev-parse`
+   * resolves — a local branch, `origin/main`, a tag, a sha. It replaces the union of
+   * `--all` (or `--branches --tags --remotes`) instead of adding to it, because a union
+   * with every ref is not a filter.
+   */
+  branch?: string;
   /** `-S` — commits that changed the number of occurrences of the string. */
   pickaxe?: string;
   /** `-G` — commits whose diff matches the regex. */
@@ -79,6 +87,9 @@ export function describeFilter(filter: LogFilter | undefined): string {
   }
   if (filter.author) {
     parts.push(`--author="${filter.author}"`);
+  }
+  if (filter.branch) {
+    parts.push(`branch ${filter.branch}`);
   }
   if (filter.pickaxe) {
     parts.push(`-S "${filter.pickaxe}"`);
@@ -130,9 +141,15 @@ export function logArgs(options: ReadLogOptions & LogDisplayOptions = {}): strin
     args.push('--author-date-order');
   }
 
+  // A branch filter walks one branch, so the union of every ref is left off the line:
+  // `--all` (or `--branches --tags --remotes`) beside it would put the other branches
+  // back, and the filter would only look like it worked.
+  const branch = options.filter?.branch?.trim() ?? '';
   if (options.includeAllRefs) {
-    args.push('--all');
-  } else if (options.all) {
+    if (branch.length === 0) {
+      args.push('--all');
+    }
+  } else if (options.all && branch.length === 0) {
     // `--all` pulls in refs/stash too, which paints WIP/index commits as if
     // they were branch history. Branches, tags and remotes are what `a` means.
     args.push('--branches', '--tags', '--remotes');
@@ -142,6 +159,10 @@ export function logArgs(options: ReadLogOptions & LogDisplayOptions = {}): strin
   }
   if (options.range) {
     args.push(options.range);
+  } else if (branch.length > 0 && !branch.startsWith('-')) {
+    // A revision, as `git log <branch>` spells it, and before the `--` that starts the
+    // paths. A value that begins with `-` would be read as an option, so it is left out.
+    args.push(branch);
   }
 
   const filter = options.filter;
@@ -237,6 +258,19 @@ export async function readLog(repoPath: string, options: ReadLogOptions & LogDis
   throw new Error(`git log failed (${result.code}): ${result.stderr.trim()}`);
 }
 
+/**
+ * Whether the value resolves to a commit — what a branch filter needs before it is worth
+ * asking `git log` for. `--quiet` keeps a typo from printing a message, and `--verify`
+ * makes the exit code the answer.
+ */
+export async function revisionExists(repoPath: string, revision: string): Promise<boolean> {
+  if (revision.trim().length === 0) {
+    return false;
+  }
+  const result = await git(repoPath, ['rev-parse', '--verify', '--quiet', `${revision.trim()}^{commit}`]);
+  return result.code === 0;
+}
+
 /** Author names are cut here, so one long name cannot push the subject away. */
 export const AUTHOR_MAX = 18;
 /** Blank columns kept between the longest author and the subject column. */
@@ -301,7 +335,7 @@ export function logRows(parsed: ParsedLog): LogRow[] {
       spans.push({ line: index, start: subjectStart, end: subjectStart + label.length, kind: 'refs' });
     }
 
-    return { text, commit, subjectStart: subjectStart + labelText.length, spans };
+    return { text, commit, subjectStart, spans };
   });
 }
 

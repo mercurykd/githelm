@@ -53,6 +53,15 @@ describe('hint lines', () => {
     assert.match(t('branches.keys'), /d compare/);
   });
 
+  it('offers the branch graph key on the branches screen alone', () => {
+    // `g` opens the whole graph from every screen, so the bigger variant of the same key
+    // is only meaningful where a row is a branch.
+    assert.ok(t('branches.keys').includes('G graph of the branch'), 'the branches screen offers it');
+    for (const hints of [t('hints.global'), t('log.keys'), t('tags.keys'), t('submodules.keys')]) {
+      assert.equal(hints.includes('G '), false, 'and no other screen claims the key');
+    }
+  });
+
   it('offers the graph key on every screen that has one', () => {
     const screens: Array<[string, string]> = [
       ['the status screen', t('hints.global')],

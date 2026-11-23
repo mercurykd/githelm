@@ -198,6 +198,9 @@ export function activate(context: vscode.ExtensionContext): void {
     // `d` on a branch reads its `log …` answer on the history screen, which is the one
     // place a range is drawn as a graph.
     openLogRange: (repoPath, range, leftRight) => logWebview.showRange(repoPath, range, leftRight),
+    // `G` on a branch opens that branch's graph: the history screen's branch filter is the
+    // one implementation of `git log <branch>`, so the key hands it the name.
+    openLogBranch: (repoPath, branch) => logWebview.showBranch(repoPath, branch),
   });
 
   /** The same table for the history screen: only the keys that wait for git have a line. */

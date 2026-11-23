@@ -329,6 +329,7 @@ export type ScreenAction =
   | 'toggleRemote'
   | 'toggleAll'
   | 'show'
+  | 'graph'
   | 'open'
   | 'update'
   | 'updateRemote'

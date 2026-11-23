@@ -16,8 +16,8 @@
 | --- | --- |
 | **状态** (`alt+g`) | 已暂存 / 未暂存 / 未跟踪 / 冲突，暂存单个文件、整个区块或选中内容，提交、amend、stash、remotes、worktrees、fetch/pull/push、reset、abort merge、diff、打开文件 |
 | **Diff** | 暂存或取消暂存光标处的 hunk，或选中的行；`Enter` 在该行打开文件 |
-| **历史** | ASCII 图形、提交详情、分支/checkout/cherry-pick/revert、fixup + autosquash、按消息/作者/日期筛选以及 `git log -S` / `-G`、切换排序、比较两个提交、reset 到某个提交 |
-| **分支** | 本地与远程（可切换）、upstream 与领先/落后、checkout / 新建 / 重命名 / 删除 / set-upstream / merge / reset |
+| **历史** | ASCII 图形、提交详情、分支/checkout/cherry-pick/revert、fixup + autosquash、按消息/作者/分支/日期筛选以及 `git log -S` / `-G`、切换排序、比较两个提交、reset 到某个提交 |
+| **分支** | 本地与远程（可切换）、upstream 与领先/落后、checkout / 新建 / 重命名 / 删除 / set-upstream / merge / reset，`G` 打开单个分支的图 |
 | **标签** | 列表、查看提交、新建、移动到 `HEAD`、删除 |
 | **提交** | 正在编写的提交的元数据、stat 和完整 patch |
 | **文件** | 当前文件的 `git log --follow` 和 `git blame` |
@@ -111,7 +111,7 @@ mklink /J "%USERPROFILE%\.vscode\extensions\mercurykd.githelm" "D:\path\to\githe
 
 状态头部是 `D:/work/app — 状态` —— 路径、破折号、界面名，按键提示在从面板正中开始的那一栏里，与其他界面完全一样；它下面、作为这一栏的第一个区块，是两行：带与 upstream 差距的分支（`origin/main: +2 −1`，为零的计数不显示）和 `HEAD`。仓库已经是标题自己的词，remote 是它自己的区块，所以这两行里不再重复它们。`remotes`、`worktrees`、`stash` 三个区块在右侧共用一栏，顺序如上，紧挨文件区块：左侧半屏留给文件，两半之间留出六列间距，栏内两个区块之间空一行（与左半部分一致）。栏内标题可以与文件侧的标题共处一行（`## staged` 挨着 `## remotes`）；按键作用于哪个区块，由光标所在的列决定。
 
-每条提示都是 `按键 动作` 一对，面板变窄时整行换行：头部与面板同宽，因此按键列表不必分两处阅读。`remotes` 区块列出每个 remote 及其 URL，“最近的提交”区块总是显示消息、作者和日期。
+每条提示都是 `按键 动作` 一对，面板变窄时整行换行：头部与面板同宽，因此按键列表不必分两处阅读。`remotes` 区块列出每个 remote 及其 URL，“最近的提交”区块总是显示消息、作者和日期，而提交的标签与分支是它消息的最前面几个词（`[HEAD -> main tag: v0.0.4] feat: …`）：标签是消息的一部分，不是一栏，所以长消息在消息栏里换行，标签也不会被截断。
 
 `stash` 区块列出仓库里的 stash，即使一个都没有也会绘制：它的按键（`z stash`、`enter files`、`d diff`、`a apply`、`p pop`、`x drop`）是状态缓冲区里唯一说明如何创建第一个 stash 的地方。`z` 依据光标决定 stash 什么：光标下的文件进入 stash，且只有这些文件 —— 不会再提问。光标停在区块标题上则整个区块进入 stash；光标下没有文件时会列出 `--staged`（仅暂存区）和 `-u`（连同未跟踪文件），最多选一项，什么都不选直接 Enter 则 stash 整个工作区。默认什么都不开：未跟踪文件只有在 `-u` 时才会进入 stash。
 
@@ -148,7 +148,7 @@ mklink /J "%USERPROFILE%\.vscode\extensions\mercurykd.githelm" "D:\path\to\githe
 | `f` | 把已暂存的改动 fixup 进该提交，然后 autosquash |
 | `R` | reset 到该提交（soft/mixed/hard） |
 | `a` | 切换显示全部分支 |
-| `/` | 筛选：消息、作者、日期范围、`git log -S` / `-G` |
+| `/` | 筛选：消息、作者、分支、日期范围、`git log -S` / `-G` |
 | `x` | 清除筛选 |
 | `s` | 切换排序（topo / date / author date） |
 | `d` | 比较提交：一个提交给出 `<commit>..HEAD`，两个给出 `A..B` 或 `A...B` 并带 left/right 标记；菜单里 diff 和图历史都提供两个方向（`B..A`） |
@@ -157,6 +157,8 @@ mklink /J "%USERPROFILE%\.vscode\extensions\mercurykd.githelm" "D:\path\to\githe
 | `r` | 刷新 |
 
 `Enter` 打开的提交界面保留 `d`（对所选文件的全部改动），并新增 `t` —— 同一批文件在该提交之后的样子：每个文件一个只读标签页，这样就能在不切换工作区的情况下读取旧版本的文件。
+
+`分支` 筛选按 `git log <branch>` 的方式读取单个分支的历史：它收窄遍历范围，而不是并入其中。它可以接受本地分支、`origin/main`、标签或 sha，并且优先于 `a` —— 后者的所有引用并集会把这些分支重新放回来。输入分支会关掉 `a`；而在设了分支时按 `a` 会清除筛选并打开所有引用 —— 遍历由最后提出的那个决定，因此标题不会把只给了一条分支的历史说成「所有分支」。解析不到的名称会得到一条提示（输入框回到仍在生效的筛选），而不是一页 `fatal: ambiguous argument`。比较一个区间会清除分支筛选，因为此时由区间决定遍历。
 
 ### 分支
 
@@ -173,8 +175,11 @@ mklink /J "%USERPROFILE%\.vscode\extensions\mercurykd.githelm" "D:\path\to\githe
 | `S` | reset 分支（soft/mixed/hard） |
 | `R` | 切换本地/远程分支 |
 | `g` | 打开图 |
+| `G` | 打开光标所在分支的图：历史界面直接带着已填好的 `分支` 筛选打开 —— 本地分支、远程分支、标签或 sha 都行，用的是同一个字段、同一条 `git log <branch>` |
 | `T` | 标签界面 |
 | `r` | 刷新 |
+
+`G` 是图键的「大写版」，就像每个界面上的大写字母那样：`g` 打开全部历史，`G` 打开同一个界面、只问一条分支。没有任何东西被复制到第二个视图：面板把分支名交给它本来就有的 `分支` 筛选，所以读者看到的是 `git log <branch>` 给出的历史，可以打开提交，也可以清空字段把范围放宽。行里可能是远程分支（`origin/main`）或标签：名字就是 `git rev-parse` 能解析的那个，和在字段里输入完全一样。
 
 ### 标签
 
@@ -307,7 +312,7 @@ npm run typecheck    # tsc --noEmit
 npm test             # 构建扩展与测试树、校验清单、运行测试套件
 ```
 
-`npm test` 直接对真实的临时 git 仓库运行 **553 个测试**（548 通过，5 跳过）—— `git` 二进制从不被 mock。同一条命令还会运行 `npm run validate`：当某个按键或菜单项指向未知命令，或者缺少 `main`、图标、shim、`CHANGELOG.md`，或者某个 README 没有指向另外两份 README 的语言切换链接时，它会失败。
+`npm test` 直接对真实的临时 git 仓库运行 **565 个测试**（560 通过，5 跳过）—— `git` 二进制从不被 mock。同一条命令还会运行 `npm run validate`：当某个按键或菜单项指向未知命令，或者缺少 `main`、图标、shim、`CHANGELOG.md`，或者某个 README 没有指向另外两份 README 的语言切换链接时，它会失败。
 
 本 README 中的截图是 `media/demo/` 里状态界面与历史界面的演示图：它们是手动拍摄的快照，不由测试套件生成，因此布局变化后需要重新制作。
 

@@ -84,7 +84,7 @@ export const zh: Record<MessageKey, string> = {
   'branches.noUpstream': '（无 upstream）',
   'branches.unborn': '尚无提交',
   'branches.keys':
-    'n 创建   c 切换   e 重命名   u upstream   x 删除   m 合并   d 比较   D 删除远程分支   S reset   R 远程分支   g 图形   T 标签页   r 刷新   q 关闭',
+    'n 创建   c 切换   e 重命名   u upstream   x 删除   m 合并   d 比较   D 删除远程分支   S reset   R 远程分支   g 图形   G 该分支的图形   T 标签页   r 刷新   q 关闭',
 
   'tags.title': '{repo} — 标签',
   'tags.section': '标签',
@@ -93,11 +93,13 @@ export const zh: Record<MessageKey, string> = {
   'log.title': '{repo} — 提交历史',
   'log.titleAll': '（所有分支）',
   'log.filterLine': '筛选：{filter}',
+  'log.branchMissing': '仓库里没有名为 {branch} 的分支或版本',
   'log.section.filters': '筛选',
   'log.keys':
     'enter 提交   n 分支   c 切换   C cherry-pick   V 还原   f fixup   R reset   a 全部分支   / 筛选   x 清除筛选   s 排序   d 对比   t 标签   g 图形   T 标签页   r 刷新   q 关闭',
   'log.field.grep': '提交信息',
   'log.field.author': '作者',
+  'log.field.branch': '分支',
   'log.field.pickaxe': '代码 (-S)',
   'log.field.pickaxeRegex': '代码 (-G)',
   'log.field.since': '起始日期',
@@ -105,6 +107,7 @@ export const zh: Record<MessageKey, string> = {
   'log.field.path': '文件',
   'log.fieldHint.grep': '提交信息中的文本',
   'log.fieldHint.author': '作者名或邮箱',
+  'log.fieldHint.branch': '分支名，例如 main 或 origin/main',
   'log.fieldHint.pickaxe': '新增或删除该字符串的提交',
   'log.fieldHint.pickaxeRegex': '对差异使用正则',
   'log.fieldHint.since': '例如 2024-01-01 或 "2 weeks ago"',

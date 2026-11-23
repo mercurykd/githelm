@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { chordOf, DOC_KEYS, DOC_NEEDS_LINE, resolveDocKey, resolveKey, resolveScreenKey } from '../src/webview/keys';
+import { chordOf, DOC_KEYS, DOC_NEEDS_LINE, resolveDocKey, resolveKey, resolveScreenKey, SCREEN_NEEDS_ROW } from '../src/webview/keys';
 
 /**
  * A key press is matched by its physical key (`event.code`), because `event.key` is
@@ -55,6 +55,19 @@ describe('webview keymap', () => {
     assert.deepEqual(resolveKey({ code: 'KeyG' }), { kind: 'opener', command: 'githelm.log.open' });
     assert.equal(resolveKey({ code: 'KeyK' }), undefined);
     assert.equal(resolveKey({ code: 'F5' }), undefined);
+  });
+
+  it('gives the branches screen the graph of the row under the cursor', () => {
+    // `g` opens the graph of everything from every screen; on a screen of branches the
+    // bigger variant of the same key is the graph of one branch, and the history screen's
+    // branch filter is what reads it.
+    assert.equal(resolveScreenKey('branches', { code: 'KeyG', shiftKey: true }), 'graph');
+    assert.equal(resolveScreenKey('branches', { code: 'KeyG' }), undefined, 'plain `g` stays the opener');
+    assert.equal(resolveScreenKey('log', { code: 'KeyG', shiftKey: true }), undefined);
+    assert.equal(resolveScreenKey('tags', { code: 'KeyG', shiftKey: true }), undefined);
+    assert.equal(resolveScreenKey('submodules', { code: 'KeyG', shiftKey: true }), undefined);
+    assert.ok(SCREEN_NEEDS_ROW.branches.includes('graph'), 'the key needs a branch to name');
+    assert.equal(SCREEN_NEEDS_ROW.log.includes('graph'), false, 'the graph screen has no row to open');
   });
 
   it('takes the repository keys that need no row under the cursor', () => {

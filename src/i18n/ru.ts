@@ -85,7 +85,7 @@ export const ru: Record<MessageKey, string> = {
   'branches.noUpstream': '(нет upstream)',
   'branches.unborn': 'коммитов ещё нет',
   'branches.keys':
-    'n создать   c checkout   e переименовать   u upstream   x удалить   m merge   d сравнить   D удалить на remote   S reset   R удалённые ветки   g граф   T теги   r обновить   q закрыть',
+    'n создать   c checkout   e переименовать   u upstream   x удалить   m merge   d сравнить   D удалить на remote   S reset   R удалённые ветки   g граф   G граф ветки   T теги   r обновить   q закрыть',
 
   'tags.title': '{repo} — теги',
   'tags.section': 'теги',
@@ -94,11 +94,13 @@ export const ru: Record<MessageKey, string> = {
   'log.title': '{repo} — история коммитов',
   'log.titleAll': ' (все ветки)',
   'log.filterLine': 'фильтр: {filter}',
+  'log.branchMissing': 'в репозитории нет ветки или ревизии {branch}',
   'log.section.filters': 'фильтры',
   'log.keys':
     'enter коммит   n ветка   c checkout   C cherry-pick   V отменить   f fixup   R reset   a все ветки   / фильтры   x сбросить фильтры   s сортировка   d сравнить   t тег   g граф   T теги   r обновить   q закрыть',
   'log.field.grep': 'сообщение',
   'log.field.author': 'автор',
+  'log.field.branch': 'ветка',
   'log.field.pickaxe': 'код (-S)',
   'log.field.pickaxeRegex': 'код (-G)',
   'log.field.since': 'с даты',
@@ -106,6 +108,7 @@ export const ru: Record<MessageKey, string> = {
   'log.field.path': 'файл',
   'log.fieldHint.grep': 'текст в сообщении коммита',
   'log.fieldHint.author': 'имя автора или e-mail',
+  'log.fieldHint.branch': 'имя ветки, например main или origin/main',
   'log.fieldHint.pickaxe': 'коммиты, добавившие/удалившие строку',
   'log.fieldHint.pickaxeRegex': 'regex по диффу',
   'log.fieldHint.since': 'например 2024-01-01 или "2 weeks ago"',

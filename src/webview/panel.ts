@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { listBranchEntries } from '../git/actions';
 import { choiceShowsDiff, compareChoices, compareFiles, headSha, planCompare, refTip } from '../git/compare';
 import type { ComparePlan } from '../git/compare';
-import { LOG_PAGE, LogCommit, LogFilter, LogSort, commitBySha, readLog } from '../git/log';
+import { LOG_PAGE, LogCommit, LogFilter, LogSort, commitBySha, readLog, revisionExists } from '../git/log';
 import { addToGitignore } from '../git/ignore';
 import { discardPaths } from '../git/ops';
 import { listRemotes, readUpstream } from '../git/remotes';
@@ -151,10 +151,16 @@ export interface ListWebviewDeps extends ScreenPanelDeps {
    * read on the history screen instead of being copied into a second view.
    */
   openLogRange: (repoPath: string, range: string, leftRight: boolean) => Promise<void>;
+  /**
+   * The graph of one branch: `G` on the branches screen hands the name to the history
+   * screen, which already has a filter that reads `git log <branch>` — so the reader lands
+   * on the branch's own graph with the field filled in, not on a history to search in.
+   */
+  openLogBranch: (repoPath: string, branch: string) => Promise<void>;
 }
 
 /** What the history screen needs: the keys of its rows — it is where a range is shown. */
-export type LogWebviewDeps = Omit<ListWebviewDeps, 'openLogRange'>;
+export type LogWebviewDeps = Omit<ListWebviewDeps, 'openLogRange' | 'openLogBranch'>;
 
 const NEEDS_ROWS = new Set<WebviewAction>(['stage', 'unstage', 'diff', 'open', 'ignore', 'discard']);
 
@@ -954,6 +960,17 @@ export class ListWebview extends ScreenPanel {
       await this.compareBranches(ids);
       return;
     }
+    // `G` is the graph of the row, which on this screen is a branch: the history screen
+    // reads it through its branch filter, so the two screens show one history and not two.
+    if (this.list === 'branches' && action === 'graph') {
+      const [name] = ids
+        .filter((id) => id.startsWith('branch:'))
+        .map((id) => id.slice('branch:'.length));
+      if (name) {
+        await this.listDeps.openLogBranch(repoPath, name);
+      }
+      return;
+    }
     await this.listDeps.run(action, repoPath, ids);
   }
 
@@ -1043,11 +1060,6 @@ export class LogWebview extends ScreenPanel {
     await super.show(repoPath);
   }
 
-  /**
-   * The screen over a range instead of the branch history: `d` on the branches screen
-   * hands its `log …` answer here, so both screens read one range on one screen. `x`
-   * clears it, exactly as after `d` on a commit.
-   */
   /** The history of one path, the way `githelm.log.fileHistory` reads it in a buffer. */
   async showPath(repoPath: string, relativePath: string): Promise<void> {
     this.filter = { ...this.filter, path: relativePath };
@@ -1057,7 +1069,33 @@ export class LogWebview extends ScreenPanel {
     await this.show(repoPath);
   }
 
+  /**
+   * The history of one branch: `G` on the branches screen lands here, so the graph opens
+   * with the branch filter filled in and the reader can read the branch's own history,
+   * then clear the field to widen it. The rest of the filters are kept — a reader who
+   * filtered by author and then asked for a branch means both.
+   */
+  async showBranch(repoPath: string, branch: string): Promise<void> {
+    this.filter = { ...this.filter, branch };
+    // A branch is the walk, so every-ref mode and a range step aside: `git log` is given
+    // the one revision, and the title says what it was given.
+    this.all = false;
+    this.range = undefined;
+    this.leftRight = undefined;
+    this.limit = LOG_PAGE;
+    await this.show(repoPath);
+  }
+
+  /**
+   * The screen over a range instead of the branch history: `d` on the branches screen
+   * hands its `log …` answer here, so both screens read one range on one screen. `x`
+   * clears it, exactly as after `d` on a commit.
+   */
   async showRange(repoPath: string, range: string, leftRight: boolean): Promise<void> {
+    // A range is the walk, so a branch filter has nothing left to narrow: it is dropped
+    // rather than left in its input, where it would claim a say it does not have.
+    const { branch: _branch, ...rest } = this.filter;
+    this.filter = rest;
     this.range = range;
     this.leftRight = leftRight ? true : undefined;
     this.limit = LOG_PAGE;
@@ -1097,7 +1135,13 @@ export class LogWebview extends ScreenPanel {
     // The keys that only change what the screen shows stay here, exactly as the branches
     // screen keeps `shift+r` to itself: they are view state, not git actions.
     if (action === 'toggleAll') {
-      this.all = !this.all;
+      // `a` and a branch filter answer the same question — which walk is this history — so
+      // whichever the reader asked for last wins: with a branch set, `a` lifts it and turns
+      // every ref on instead of being a key that does nothing.
+      const asked = this.filter.branch !== undefined;
+      const { branch: _branch, ...rest } = this.filter;
+      this.filter = rest;
+      this.all = asked ? true : !this.all;
       await this.refresh();
       // The buffer's `a` only redraws, so the panel only redraws.
       return;
@@ -1196,18 +1240,32 @@ export class LogWebview extends ScreenPanel {
     if (!this.repo || !(FILTER_FIELDS as readonly string[]).includes(field)) {
       return;
     }
+    const trimmed = value.trim();
+    // Re-reading an unchanged filter would throw the reader back to the top of the page
+    // for nothing: typing the same value again is not a change — and it is not a name to
+    // look up again either.
+    if ((this.filter[field as FilterField] ?? '') === trimmed) {
+      return;
+    }
+    // A branch is a revision, not a pattern: a name that resolves to nothing would send
+    // `git log` a fatal error instead of an empty history, so it is answered here — and
+    // the input is redrawn from the filter that is still set, not left holding the typo.
+    if (field === 'branch' && trimmed.length > 0 && !(await revisionExists(this.repo, trimmed))) {
+      this.deps.notify(t('log.branchMissing', { branch: trimmed }));
+      await this.refresh();
+      return;
+    }
     const next: LogFilter = { ...this.filter };
     const writable = next as Record<string, string | undefined>;
-    const trimmed = value.trim();
     if (trimmed.length > 0) {
       writable[field as FilterField] = trimmed;
     } else {
       delete writable[field as FilterField];
     }
-    // Re-reading an unchanged filter would throw the reader back to the top of the page
-    // for nothing: typing the same value again is not a change.
-    if ((this.filter[field as FilterField] ?? '') === trimmed) {
-      return;
+    // A branch is the walk, so `a` — the walk of every ref — is turned off with it; the
+    // title would otherwise claim every branch while `git log` is given one.
+    if (field === 'branch') {
+      this.all = false;
     }
     this.filter = next;
     await this.refresh();

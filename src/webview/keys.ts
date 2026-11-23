@@ -269,6 +269,9 @@ export const SCREEN_KEYS: Record<Exclude<ScreenKind, 'status'>, Record<string, S
     KeyD: 'compare',
     KeyR: 'refresh',
     KeyQ: 'close',
+    // `g` opens the graph of everything, so the bigger variant of the same key opens it
+    // narrowed to the branch under the cursor.
+    'shift+KeyG': 'graph',
     'shift+KeyR': 'toggleRemote',
     'shift+KeyD': 'removeRemote',
     'shift+KeyS': 'reset',
@@ -314,7 +317,7 @@ export function resolveScreenKey(screen: ScreenKind, event: KeyEventLike): Scree
  */
 export const SCREEN_NEEDS_ROW: Record<Exclude<ScreenKind, 'status'>, ScreenAction[]> = {
   log: ['show', 'create', 'checkout', 'tag', 'fixup', 'cherryPick', 'revert', 'reset', 'compare'],
-  branches: ['checkout', 'rename', 'upstream', 'remove', 'removeRemote', 'merge', 'reset', 'compare'],
+  branches: ['checkout', 'rename', 'upstream', 'remove', 'removeRemote', 'merge', 'reset', 'compare', 'graph'],
   tags: ['show', 'move', 'push', 'remove', 'removeRemote'],
   submodules: ['open', 'update', 'updateRemote'],
   // The log is read, not worked in: every key is the screen's own.

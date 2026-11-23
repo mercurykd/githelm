@@ -32,6 +32,13 @@ describe('translations', () => {
     }
   });
 
+  it('tells the reader of the branches screen about the branch graph key', () => {
+    // `G` exists on one screen only, so that screen's hint line is its only announcement.
+    for (const table of [en, ru, zh]) {
+      assert.match(table['branches.keys'], /(^|\s)G \S/, 'the hint line carries the key and its label');
+    }
+  });
+
   it('offers three languages and defaults to English', () => {
     assert.equal(getLanguage(), 'en');
     assert.deepEqual(

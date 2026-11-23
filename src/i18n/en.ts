@@ -88,7 +88,7 @@ export const en = {
   'branches.noUpstream': '(no upstream)',
   'branches.unborn': 'no commits yet',
   'branches.keys':
-    'n create   c checkout   e rename   u upstream   x delete   m merge   d compare   D delete remote   S reset   R remote branches   g graph   T tags   r refresh   q close',
+    'n create   c checkout   e rename   u upstream   x delete   m merge   d compare   D delete remote   S reset   R remote branches   g graph   G graph of the branch   T tags   r refresh   q close',
 
   'tags.title': '{repo} — tags',
   'tags.section': 'tags',
@@ -97,11 +97,13 @@ export const en = {
   'log.title': '{repo} — commit history',
   'log.titleAll': ' (all branches)',
   'log.filterLine': 'filter: {filter}',
+  'log.branchMissing': 'no branch or revision named {branch} in this repository',
   'log.section.filters': 'filters',
   'log.keys':
     'enter commit   n branch   c checkout   C cherry-pick   V revert   f fixup   R reset   a all   / filters   x reset filters   s sort   d compare   t tag   g graph   T tags   r refresh   q close',
   'log.field.grep': 'message',
   'log.field.author': 'author',
+  'log.field.branch': 'branch',
   'log.field.pickaxe': 'code (-S)',
   'log.field.pickaxeRegex': 'code (-G)',
   'log.field.since': 'since',
@@ -109,6 +111,7 @@ export const en = {
   'log.field.path': 'file',
   'log.fieldHint.grep': 'text in commit message',
   'log.fieldHint.author': 'author name or e-mail',
+  'log.fieldHint.branch': 'branch name, e.g. main or origin/main',
   'log.fieldHint.pickaxe': 'commits that added/removed this string',
   'log.fieldHint.pickaxeRegex': 'regex over the diff',
   'log.fieldHint.since': 'e.g. 2024-01-01 or "2 weeks ago"',

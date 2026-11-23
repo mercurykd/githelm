@@ -442,11 +442,17 @@ kbd {
 }
 
 /* One field per box, its name as the placeholder: a row of compact inputs rather than
-   a label with a box under it, so the filters take one line above the grid. */
+   a label with a box under it, so the filters take one line above the grid. Eight fields
+   share that line at the default 13px font because the box asks for eleven characters,
+   not fourteen: at 874 pixels the eight bases, the gaps and the padding come to less than
+   the line and the bases grow to fill it — 98.75 pixels each — where the wider base pushed
+   the eighth onto a line of its own and let it stretch to 242. A narrow panel still wraps,
+   and `max-width` keeps the boxes of the last line from stretching past about twenty
+   characters, which is more than any of the placeholders needs. */
 .filter-input {
-  flex: 1 1 14ch;
-  min-width: 12ch;
-  max-width: 32ch;
+  flex: 1 1 11ch;
+  min-width: 11ch;
+  max-width: 20ch;
   font: inherit;
   padding: 2px 6px;
   color: var(--vscode-input-foreground);
@@ -475,11 +481,13 @@ kbd {
 }
 
 .log-line {
-  /* A subject longer than the panel wraps under the subject column, not under the graph:
+  /* A subject longer than the panel wraps under the message column, not under the graph:
      the row is one string, so this is a hanging indent — `padding-left` is where a
      continuation line starts, and `text-indent` pulls the first line back to the edge.
-     `--subject-column` is the row's own (a refs label in front of the subject moves it),
-     and `1ch` is the column width because the row is set in the editor's monospace font. */
+     `--subject-column` is the row's own, and it is the column the message starts in — the
+     refs label counts as the message's first words, not as a column of its own, so the
+     continuation does not start after the tag; `1ch` is the column width because the row
+     is set in the editor's monospace font. */
   --subject-column: 0;
   display: block;
   min-width: 0;
@@ -578,26 +586,22 @@ kbd {
   color: var(--vscode-githelm-author, var(--gh-author));
 }
 
-.commit-subject {
-  flex: 1 1 auto;
+/* The refs of a commit (`[HEAD -> main tag: v0.0.4]`) read as the first words of its message,
+   and the message is one flow of text: the tag, then the subject, wrapping together inside
+   the message column, so a long subject continues under the column's own left edge and the
+   refs are never cut short — the subject takes the width the tag leaves. The refs used to be
+   a flex item of their own, which shrank it to an ellipsis and pushed the wrapped subject
+   past it, as if the tag were a column. */
+.commit-message {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-/* The refs of a commit (`[HEAD -> main tag: v0.0.4]`) sit in front of its subject, in the
-   same grid cell, so a row without refs does not leave a hole in a column of its own. */
-.commit-message {
-  display: flex;
-  gap: 1ch;
-  min-width: 0;
-}
-
+/* A space between the tag and the subject, the way the buffer prints `[refs] subject`: a
+   margin on the tag belongs to the end of its own line, so a wrap never starts the
+   continuation line with a stray space. */
 .commit-refs {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin-right: 1ch;
 }
 
 /* ---------------------------------------------------------------- notices */

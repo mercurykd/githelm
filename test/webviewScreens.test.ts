@@ -257,28 +257,34 @@ describe('the history screen as a panel', () => {
     assert.deepEqual(model.rows[0].commit?.refs, ['HEAD -> main', 'tag: v1']);
   });
 
-  it('tells the row where its subject starts, so a long subject wraps under it', () => {
-    // The row is one string, so the panel cannot wrap at the subject with an element:
-    // it gets the column instead and hangs the continuation line there. The column is
-    // where the subject actually begins — a refs label in front of it moves the column
-    // for that row only.
+  it('tells the row where its message column starts, so a long message wraps under it', () => {
+    // The row is one string, so the panel cannot wrap at the subject with an element: it
+    // gets the column instead and hangs the continuation line there. The column is where
+    // the message begins — a refs label in front of the subject is part of that message,
+    // not a column of its own, so it does not move the column and the continuation line
+    // starts under the tag rather than after it.
     const parsed = history();
     const model = logModel(parsed);
     const rows = logRows(parsed);
+    const messages = ['[HEAD -> main tag: v1] first commit', 'second commit'];
     model.rows.forEach((row, index) => {
       const source = rows[index];
       assert.equal(typeof row.subjectColumn, 'number');
       assert.equal(
         source.text.slice(row.subjectColumn),
-        source.commit?.subject,
-        'the column is the first character of the subject, not of the line'
+        messages[index],
+        'the column is where the message begins, refs label and all'
       );
-      assert.equal(row.subjectColumn, source.text.length - (source.commit?.subject.length ?? 0));
     });
-    assert.notEqual(
+    assert.equal(
       model.rows[0].subjectColumn,
       model.rows[1].subjectColumn,
-      'a row with refs starts its subject further right than one without'
+      'a row with refs starts its message in the same column as one without'
+    );
+    assert.equal(
+      rows[0].text.slice(model.rows[0].subjectColumn ?? 0),
+      '[HEAD -> main tag: v1] first commit',
+      'the refs label is the message’s first words'
     );
   });
 
@@ -287,7 +293,7 @@ describe('the history screen as a panel', () => {
       repoPath: '/repo',
       parsed: history(),
       all: false,
-      filter: { author: 'Ada' },
+      filter: { author: 'Ada', branch: 'origin/main' },
       sort: 'topo',
       limit: 200,
     });
@@ -312,6 +318,18 @@ describe('the history screen as a panel', () => {
     assert.equal(grep?.label, fieldLabel('grep'));
     assert.equal(author?.label, fieldLabel('author'), 'the name stays even while a value is set');
     assert.equal(model.filters.find((row) => row.id === 'field:pickaxe')?.label, fieldLabel('pickaxe'));
+    // A branch is a field like the others: the box says what it filters while it is empty,
+    // and shows the branch it is filtering by once one is set.
+    const branch = model.filters.find((row) => row.id === 'field:branch');
+    assert.equal(branch?.field, 'branch', 'the host is told which field the value belongs to');
+    assert.equal(branch?.value, 'origin/main');
+    assert.equal(branch?.filled, true);
+    assert.equal(branch?.label, fieldLabel('branch'));
+    assert.ok(
+      FILTER_FIELDS.indexOf('branch') > FILTER_FIELDS.indexOf('author') &&
+        FILTER_FIELDS.indexOf('branch') < FILTER_FIELDS.indexOf('pickaxe'),
+      'the branch sits with the identity filters, not among the content ones'
+    );
   });
 
   it('drops the commit count and keeps only an order the reader chose', () => {
@@ -847,6 +865,25 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
     assert.match(table.slice(0, table.indexOf('}')), /padding-left: calc\(2ch \+ 4px\)/, 'the buffer’s two-space indent');
   });
 
+  it('reads the refs of a commit as the first words of its message, not as a column', () => {
+    // The refs used to be a flex item in front of the subject: it shrank to an ellipsis to
+    // make room, and the subject — a second item — wrapped inside its own box, so the
+    // continuation line started after the tag as if the tag were a column.
+    const message = STYLE.slice(STYLE.indexOf('.commit-message {'));
+    const messageBody = message.slice(message.indexOf('{'), message.indexOf('}'));
+    assert.ok(!/display: flex/.test(messageBody), 'the message is one flow of text, not a row of items');
+    assert.match(messageBody, /min-width: 0;/, 'it can shrink to the cell the table gave it');
+    assert.match(messageBody, /overflow-wrap: anywhere;/, 'a long word breaks inside the cell');
+    const refs = STYLE.slice(STYLE.indexOf('.commit-refs {'));
+    const refsBody = refs.slice(refs.indexOf('{'), refs.indexOf('}'));
+    assert.ok(!/text-overflow: ellipsis/.test(refsBody), 'the refs are never cut short');
+    assert.ok(!/overflow: hidden/.test(refsBody), 'and never clipped');
+    assert.match(refsBody, /margin-right: 1ch;/, 'a word space before the subject, as the buffer prints it');
+    assert.ok(!/\.commit-subject \{/.test(STYLE), 'the subject needs no box of its own any more');
+    assert.match(CLIENT, /message\.append\(element\('span', 'commit-refs role-refs', commit\.refs\)\)/, 'the refs come first in that flow');
+    assert.match(CLIENT, /message\.append\(element\('span', 'commit-subject', commit\.subject\)\)/, 'then the subject, in the same element');
+  });
+
   it('diffs a whole stash from its row, without planning a range git cannot read', () => {
     // `d` on a stash row used to ask for `git diff --name-only ^..`, which git answers with
     // `fatal: bad revision '^..'` — exit 128, an error notification and no diff at all.
@@ -913,6 +950,20 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
     const body = PANEL.slice(PANEL.indexOf('protected override async onFilter('), PANEL.indexOf('protected override async onMore('));
     assert.match(body, /await this\.refresh\(\)/, 'the history is re-read with the new filter');
     assert.match(body, /delete writable\[field as FilterField\]/, 'an emptied input lifts the filter');
+    // A branch is a revision, not a pattern: a name that resolves to nothing would make
+    // `git log` fail instead of showing an empty history, so the host answers it first and
+    // redraws the input from the filter that is still set.
+    assert.match(body, /revisionExists\(this\.repo, trimmed\)/, 'the branch is checked before it is asked for');
+    assert.match(body, /t\('log\.branchMissing'/, 'a typo is answered, not handed to git');
+    // `a` and a branch are two answers to one question: the last one asked wins, so `a`
+    // lifts the branch and a typed branch turns `a` off. Either way the title's claim about
+    // the walk — `(all branches)` or nothing — is what `git log` was actually given.
+    assert.match(body, /this\.all = false;/, 'a branch is the walk, so every-ref mode is off');
+    assert.match(
+      PANEL,
+      /const \{ branch: _branch, \.\.\.rest \} = this\.filter;[\s\S]{0,160}this\.all = asked \? true : !this\.all;/,
+      '`a` with a branch set turns every ref on instead of doing nothing'
+    );
   });
 
   it('compares two commits without dropping into a text buffer', () => {
@@ -963,6 +1014,38 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
     assert.ok(SCREEN_NEEDS_ROW.branches.includes('compare'), 'a compare needs a row to name');
   });
 
+  it('opens the graph of the branch under the cursor with G', () => {
+    // `G` on a branch is the history screen asked a question it already has a field for:
+    // the name is handed over as the branch filter, so both screens read one history.
+    const screen = PANEL.slice(
+      PANEL.indexOf('protected override async onScreen('),
+      PANEL.indexOf('private async compareBranches(')
+    );
+    assert.match(
+      screen,
+      /this\.list === 'branches' && action === 'graph'[\s\S]*?this\.listDeps\.openLogBranch\(repoPath, name\)/,
+      'the key is the panel’s, and the host hands the name to the history screen'
+    );
+    assert.match(screen, /id\.startsWith\('branch:'\)[\s\S]*?id\.slice\('branch:'\.length\)/, 'the row names the branch');
+    const show = PANEL.slice(PANEL.indexOf('async showBranch('), PANEL.indexOf('async showRange('));
+    assert.match(show, /this\.filter = \{ \.\.\.this\.filter, branch \}/, 'the filter the history screen already reads');
+    assert.match(show, /this\.all = false;/, 'a branch is the walk, so every-ref mode steps aside');
+    assert.match(
+      show,
+      /this\.range = undefined;[\s\S]*?this\.leftRight = undefined;[\s\S]*?this\.limit = LOG_PAGE;[\s\S]*?await this\.show\(repoPath\)/,
+      'a range steps aside too, and the branch is read from its first page'
+    );
+    assert.match(
+      SOURCE,
+      /openLogBranch: \(repoPath, branch\) => logWebview\.showBranch\(repoPath, branch\)/,
+      'the host routes the key to the history screen'
+    );
+    // The key is a row key of the branches screen, and it is announced there.
+    assert.equal(SCREEN_KEYS.branches['shift+KeyG'], 'graph');
+    assert.ok(SCREEN_NEEDS_ROW.branches.includes('graph'), 'a branch is needed to name');
+    assert.ok(t('branches.keys').includes('G graph of the branch'), 'the hint line says so');
+  });
+
   it('gives every key of a screen something to do', () => {
     const body = (from: string, to: string): string => {
       const start = SOURCE.indexOf(from);
@@ -975,7 +1058,9 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
     const log = body('const runLog = async', 'const pickRemote = async');
     // Panel-side keys: the panel closes its own tab and redraws itself; `shift+r` is
     // display state, and the history screen keeps its filters, its order and its page.
-    const panelOnly = ['close', 'refresh', 'toggleRemote', 'toggleAll', 'sort', 'resetFilters', 'filters'];
+    // `G` has no buffer equivalent at all: the branches screen hands it to the history
+    // screen, so it never reaches the host's `run`.
+    const panelOnly = ['close', 'refresh', 'toggleRemote', 'toggleAll', 'sort', 'resetFilters', 'filters', 'graph'];
     for (const [screen, host] of [
       ['branches', branches],
       ['tags', tags],

@@ -4,7 +4,7 @@ import type { LogFilter } from '../git/log';
 /** The fields of the log filter, in the order the dialog and the panel list them. */
 export type FilterField = keyof LogFilter;
 
-export const FILTER_FIELDS: FilterField[] = ['grep', 'author', 'pickaxe', 'pickaxeRegex', 'since', 'until', 'path'];
+export const FILTER_FIELDS: FilterField[] = ['grep', 'author', 'branch', 'pickaxe', 'pickaxeRegex', 'since', 'until', 'path'];
 
 /** The name of a filter field, and the hint under it, in the reader's language. */
 export function fieldLabel(field: FilterField): string {
