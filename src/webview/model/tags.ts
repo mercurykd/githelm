@@ -2,7 +2,7 @@ import { authorColumnWidth, truncateAuthor } from '../../git/log';
 import { TagEntry } from '../../git/tags';
 import { t } from '../../i18n';
 import type { FactModel, ListModel, RowItemModel, RowPartModel } from '../protocol';
-import { parseHints } from './status';
+import { parseHints } from './hints';
 
 /** An annotation is a note beside the tag, not a paragraph: the buffer cuts it here. */
 const ANNOTATION_WIDTH = 40;

@@ -14,7 +14,7 @@
 
 | 界面 | 亮点 |
 | --- | --- |
-| **状态** (`alt+g`) | 已暂存 / 未暂存 / 未跟踪 / 冲突，暂存单个文件、整个区块或选中内容，提交、amend、stash、remotes、worktrees、fetch/pull/push、reset、abort merge、diff、打开文件 |
+| **状态** (`alt+g`) | 已暂存 / 未暂存 / 未跟踪 / 冲突，暂存单个文件、整个区块或选中内容，提交、amend、stash、remotes、worktrees、本地分支区块（切换 / 创建 / 合并 / 图形 / reset）、最近提交操作（打开、分支、切换、拣选、还原、修补、reset、标签）、fetch/pull/push、abort merge、diff、打开文件 |
 | **Diff** | 暂存或取消暂存光标处的 hunk，或选中的行；`Enter` 在该行打开文件 |
 | **历史** | ASCII 图形、提交详情、分支/checkout/cherry-pick/revert、fixup + autosquash、按消息/作者/分支/日期筛选以及 `git log -S` / `-G`、切换排序、比较两个提交、reset 到某个提交 |
 | **分支** | 本地与远程（可切换）、upstream 与领先/落后、checkout / 新建 / 重命名 / 删除 / set-upstream / merge / reset，`G` 打开单个分支的图 |
@@ -47,7 +47,7 @@ npm install
 npm run build
 ```
 
-然后按 `F5`（Extension Development Host），或者安装打包好的构建：
+然后按 `F5`（Extension Development Host），或者安装打包好的构建。启动配置传入 `--disable-extensions`：dev host 中已安装的扩展保持不启用，因此已安装的 Git Helm 不会与正在开发的副本冲突——打开其他文件夹后也一样。
 
 ```bash
 npx @vscode/vsce package --no-dependencies
@@ -96,7 +96,7 @@ mklink /J "%USERPROFILE%\.vscode\extensions\mercurykd.githelm" "D:\path\to\githe
 | `n` | 添加 worktree：先路径，再分支 / 标签 / 提交（分支不存在时从 `HEAD` 创建） |
 | `W` | 清理目录已消失的 worktree 记录 |
 | `f` / `P` / `U` | fetch / pull / push |
-| `R` | reset：选择 soft/mixed/hard，再选 `HEAD` 或 upstream |
+| `R` | reset：一个模式选择器，提示为 `重置到 HEAD`——选择 soft/mixed/hard 后立即执行 |
 | `M` | 中止进行中的 merge、revert 或 cherry-pick —— 会先确认，已解决的冲突将丢失 |
 | `x` | 删除光标处的 stash / 标签 / remote / worktree；每一项都会先确认，而被删除的 stash 就没了 —— 这个列表是它唯一的所在 |
 | `e` | 修改 remote 的 URL，或把标签移动到 `HEAD` |
@@ -113,9 +113,11 @@ mklink /J "%USERPROFILE%\.vscode\extensions\mercurykd.githelm" "D:\path\to\githe
 
 每条提示都是 `按键 动作` 一对，面板变窄时整行换行：头部与面板同宽，因此按键列表不必分两处阅读。`remotes` 区块列出每个 remote 及其 URL，“最近的提交”区块总是显示消息、作者和日期，而提交的标签与分支是它消息的最前面几个词（`[HEAD -> main tag: v0.0.4] feat: …`）：标签是消息的一部分，不是一栏，所以长消息在消息栏里换行，标签也不会被截断。
 
+状态界面下半部分是两个区块：左边的 `## branches (n)` 和右边的 `## last commits (n)`，提交区块占 60% 宽度。分支区块只列出本地分支——当前分支标有 `*`，并带有跟踪标签和最后一次提交的主题。选中分支行时，它使用分支界面的按键：`Enter` 或 `c` 切换分支，`n` 从所选分支创建新分支，`m` 把它合并进当前分支，`R` 重置到该分支（一个模式选择器，提示为 `重置到 <name>`），`G` 打开该分支的图形。提交行同样可选，并使用历史界面的按键：`Enter` 打开提交，`n` 从该提交创建分支，`c` 切换其分支（如果没有分支指向该提交，则直接以分离 HEAD 检出该提交），`C` 拣选，`V` 还原，`f` 修补，`R` 重置到该提交，`t` 打标签；`g` 仍然打开全部历史。在其他行上同样的键保持状态含义（`c` 提交、`m` 修补、`n` 添加 worktree），所以由光标所在行决定，每个区块的提示行会说明当前是哪种读法。
+
 `stash` 区块列出仓库里的 stash，即使一个都没有也会绘制：它的按键（`z stash`、`enter files`、`d diff`、`a apply`、`p pop`、`x drop`）是状态缓冲区里唯一说明如何创建第一个 stash 的地方。`z` 依据光标决定 stash 什么：光标下的文件进入 stash，且只有这些文件 —— 不会再提问。光标停在区块标题上则整个区块进入 stash；光标下没有文件时会列出 `--staged`（仅暂存区）和 `-u`（连同未跟踪文件），最多选一项，什么都不选直接 Enter 则 stash 整个工作区。默认什么都不开：未跟踪文件只有在 `-u` 时才会进入 stash。
 
-任何删除或丢弃操作都会先提问：`D` discard、`x` 删除（stash、标签、remote、worktree）、分支与标签界面上的 `x`、分支界面上删除远程分支的 `D`、`R`/`S` hard reset、`V` revert、`M` 中止、`c` 清空操作日志。`p` pop 不问：它先应用 stash 再删除记录，改动已经在工作区里。
+任何删除或丢弃操作都会先提问：`D` discard、`x` 删除（stash、标签、remote、worktree）、分支与标签界面上的 `x`、分支界面上删除远程分支的 `D`、`R` hard reset、`V` revert、`M` 中止、`c` 清空操作日志。`p` pop 不问：它先应用 stash 再删除记录，改动已经在工作区里。
 
 `worktrees` 区块列出仓库的每一个检出，`*` 标出面板所属的那一个；光标所在的列决定按键作用于哪一行。在行上按 `Enter` 切换到该 worktree（它自己的状态缓冲区），`Shift+Enter` 在新窗口中打开该目录，`Alt+Enter` 在当前窗口重新加载该目录（会先确认 —— 当前目录、布局和未保存的编辑器都会丢失），`n` 新增，`x` 删除光标处的 worktree —— 有未提交改动时会询问是否使用 `--force`，而不是直接失败；当前 worktree 只能从另一个 worktree 中删除。`W` 清理目录已经不存在的记录。当活动缓冲区属于一个关联的 worktree 时，状态栏会在分支旁显示它的名字。
 
@@ -142,11 +144,11 @@ mklink /J "%USERPROFILE%\.vscode\extensions\mercurykd.githelm" "D:\path\to\githe
 | `Enter` | 打开提交屏幕：作者、日期、提交信息以及改动的文件 |
 | `n` | 从该提交新建分支 |
 | `t` | 为光标所在的提交创建标签 —— 新引用会立即显示在该行 |
-| `c` | checkout 该提交所在的分支 |
+| `c` | checkout 该提交所在的分支——如果没有分支指向该提交，则直接以分离 HEAD 检出该提交 |
 | `C` | 把该提交 cherry-pick 到当前分支 |
 | `V` | revert 该提交：生成一个抵消它的新提交（会先确认；合并提交会询问主线父提交；冲突可以回到状态界面按 `M` 中止） |
 | `f` | 把已暂存的改动 fixup 进该提交，然后 autosquash |
-| `R` | reset 到该提交（soft/mixed/hard） |
+| `R` | reset 到该提交：一个模式选择器，提示为 `重置到提交 <sha>` |
 | `a` | 切换显示全部分支 |
 | `/` | 筛选：消息、作者、分支、日期范围、`git log -S` / `-G` |
 | `x` | 清除筛选 |
@@ -172,8 +174,8 @@ mklink /J "%USERPROFILE%\.vscode\extensions\mercurykd.githelm" "D:\path\to\githe
 | `D` | 删除远程分支 |
 | `m` | merge 到当前分支 |
 | `d` | 比较 —— 一个分支与 `HEAD`，或两个分支互相比较；`diff …` 打开补丁，`log …` 打开该范围的图 |
-| `S` | reset 分支（soft/mixed/hard） |
-| `R` | 切换本地/远程分支 |
+| `R` | reset 分支：一个模式选择器，提示为 `重置到 <name>` |
+| `a` | 切换本地/远程分支 |
 | `g` | 打开图 |
 | `G` | 打开光标所在分支的图：历史界面直接带着已填好的 `分支` 筛选打开 —— 本地分支、远程分支、标签或 sha 都行，用的是同一个字段、同一条 `git log <branch>` |
 | `T` | 标签界面 |
@@ -312,7 +314,7 @@ npm run typecheck    # tsc --noEmit
 npm test             # 构建扩展与测试树、校验清单、运行测试套件
 ```
 
-`npm test` 直接对真实的临时 git 仓库运行 **565 个测试**（560 通过，5 跳过）—— `git` 二进制从不被 mock。同一条命令还会运行 `npm run validate`：当某个按键或菜单项指向未知命令，或者缺少 `main`、图标、shim、`CHANGELOG.md`，或者某个 README 没有指向另外两份 README 的语言切换链接时，它会失败。
+`npm test` 直接对真实的临时 git 仓库运行 **573 个测试**（568 通过，5 跳过）—— `git` 二进制从不被 mock。同一条命令还会运行 `npm run validate`：当某个按键或菜单项指向未知命令，或者缺少 `main`、图标、shim、`CHANGELOG.md`，或者某个 README 没有指向另外两份 README 的语言切换链接时，它会失败。
 
 本 README 中的截图是 `media/demo/` 里状态界面与历史界面的演示图：它们是手动拍摄的快照，不由测试套件生成，因此布局变化后需要重新制作。
 

@@ -62,6 +62,14 @@ export type KeyCommand =
         | 'ignore'
         | 'discard'
         | 'commit'
+        | 'checkout'
+        | 'create'
+        | 'merge'
+        | 'graph'
+        | 'show'
+        | 'cherryPick'
+        | 'revert'
+        | 'fixup'
         | 'tag'
         | 'stash'
         | 'stageAll'
@@ -216,6 +224,65 @@ export function resolveKey(event: KeyEventLike): KeyCommand | undefined {
 }
 
 /**
+ * The keys of the status screen, with one exception: a `branch:` row has the branches
+ * screen's keys. `c` commits on a file and checks out on a branch, `m` amends on a file
+ * and merges on a branch, `n` adds a worktree anywhere but creates a branch from the
+ * selected one, `Enter` opens a file but switches to a branch, and `Shift+G` opens the
+ * graph of the branch under the selection. The row decides, exactly as the column decides
+ * for the keys that act on a remote or a stash, and the branch block's hint line says
+ * which reading is in force.
+ */
+const STATUS_BRANCH_KEYS: Record<string, 'checkout' | 'create' | 'merge' | 'graph' | 'reset'> = {
+  Enter: 'checkout',
+  KeyC: 'checkout',
+  KeyN: 'create',
+  KeyM: 'merge',
+  'shift+KeyR': 'reset',
+  'shift+KeyG': 'graph',
+};
+
+/**
+ * The last-commits block keeps the history screen's keys: `Enter` opens the commit,
+ * `n` branches from it, `c` checks out its branch, `C` cherry-picks it, `V` reverts it,
+ * `f` fixups staged changes into it, `R` resets to it and `t` tags it. As on the graph,
+ * the plain `r`/`g` and the repository-wide chords stay the status screen's.
+ */
+const STATUS_COMMIT_KEYS: Record<
+  string,
+  'show' | 'create' | 'checkout' | 'cherryPick' | 'revert' | 'fixup' | 'reset' | 'tag'
+> = {
+  Enter: 'show',
+  KeyN: 'create',
+  KeyC: 'checkout',
+  'shift+KeyC': 'cherryPick',
+  'shift+KeyV': 'revert',
+  KeyF: 'fixup',
+  'shift+KeyR': 'reset',
+  KeyT: 'tag',
+};
+
+/** A status key, read as a branch or commit key while that kind of row is the selection. */
+export function resolveStatusKey(primaryId: string | undefined, event: KeyEventLike): KeyCommand | undefined {
+  const chord = chordOf(event);
+  if (primaryId?.startsWith('branch:')) {
+    // The table is keyed by the full chord, so the bigger variants that are not a branch
+    // key — `Shift+Enter` as a worktree window, `Alt`/`Ctrl` chords — fall through to the
+    // status map as before.
+    const action = STATUS_BRANCH_KEYS[chord];
+    if (action) {
+      return { kind: 'action', action };
+    }
+  }
+  if (primaryId?.startsWith('commit:')) {
+    const action = STATUS_COMMIT_KEYS[chord];
+    if (action) {
+      return { kind: 'action', action };
+    }
+  }
+  return resolveKey(event);
+}
+
+/**
  * A key as one string: `n`, `shift+d`, `alt+enter`. The tables below are written in
  * the same notation the buffers' hints use, so a key map reads like the help screen.
  */
@@ -267,14 +334,14 @@ export const SCREEN_KEYS: Record<Exclude<ScreenKind, 'status'>, Record<string, S
     KeyX: 'remove',
     KeyM: 'merge',
     KeyD: 'compare',
+    KeyA: 'toggleRemote',
     KeyR: 'refresh',
     KeyQ: 'close',
     // `g` opens the graph of everything, so the bigger variant of the same key opens it
     // narrowed to the branch under the cursor.
     'shift+KeyG': 'graph',
-    'shift+KeyR': 'toggleRemote',
+    'shift+KeyR': 'reset',
     'shift+KeyD': 'removeRemote',
-    'shift+KeyS': 'reset',
   },
   tags: {
     Enter: 'show',

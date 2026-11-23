@@ -218,6 +218,32 @@ kbd {
   }
 }
 
+/* The status screen's bottom half: the local branches on the left, `last commits` on the
+   right. The commits keep 60% of the width — a sha, a date, an author and a message need
+   the room — and the branch block takes the rest. A narrow panel stacks them, as the main
+   grid does. */
+.bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 6fr);
+  gap: 24px;
+  align-items: start;
+}
+
+/* The key lines of the two bottom blocks are longer than a column: the history keys and
+   the branch keys wrap inside their block instead of running into the other one. */
+.bottom .hint-line {
+  flex-wrap: wrap;
+  width: auto;
+  max-width: 100%;
+  row-gap: 2px;
+}
+
+@media (max-width: 820px) {
+  .bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .files,
 .column {
   display: flex;
@@ -568,14 +594,15 @@ kbd {
 
 /* ---------------------------------------------------------------- last commits */
 
-.commit-rows {
-  display: grid;
-  grid-template-columns: 8ch 17ch max-content minmax(0, 1fr);
-  column-gap: 2ch;
-}
-
+/* No shared grid: every row is its own grid so the row can be selected as one box.
+   `--commit-author-width` is measured by the model, which keeps the message columns
+   aligned without a shared `max-content` track. */
 .commit-row {
-  display: contents;
+  display: grid;
+  grid-template-columns: 8ch 17ch var(--commit-author-width, 8ch) minmax(0, 1fr);
+  gap: 0 2ch;
+  align-items: baseline;
+  min-width: 0;
 }
 
 .commit-sha {

@@ -1,23 +1,26 @@
+import { BranchEntry } from '../../git/actions';
 import { refsLabel } from '../../git/log';
 import { RemoteEntry, UpstreamInfo } from '../../git/remotes';
 import { RepoStatus, StatusEntry, sectionTitle } from '../../git/status';
 import { StashEntry } from '../../git/stash';
 import { WorktreeEntry } from '../../git/worktree';
 import { t } from '../../i18n';
-import { keySegments } from '../../views/rowLabels';
 import type { FileTarget } from '../../views/discardPlan';
 import {
   ColorRole,
   ColumnBlockModel,
   CommitRowModel,
+  CommitsBlockModel,
   FactModel,
   FactPart,
-  HintModel,
+  RowBlockModel,
   RowModel,
   SectionKind,
   SectionModel,
   StatusModel,
 } from '../protocol';
+import { branchRowOf } from './branches';
+import { parseHints } from './hints';
 
 /** Conflicts first, then the three sections that are always on screen. */
 const SECTION_ORDER: SectionKind[] = ['conflict', 'staged', 'unstaged', 'untracked'];
@@ -29,24 +32,14 @@ export interface StatusModelInput {
   stashes: StashEntry[];
   worktrees: WorktreeEntry[];
   /** The last commits, as the `last commits` block prints them. */
-  commits: { shortSha: string; date: string; author: string; subject: string; refs?: string[] }[];
+  commits: { sha?: string; shortSha: string; date: string; author: string; subject: string; refs?: string[] }[];
+  /** Local branches, as the `branches` screen prints them. */
+  branches?: BranchEntry[];
   upstream?: UpstreamInfo;
 }
 
 export function rowId(entry: Pick<StatusEntry, 'section' | 'path'>): string {
   return `${entry.section}:${entry.path}`;
-}
-
-/** `c commit   alt+s stage all` → `{ keys: 'c', label: 'commit' }`, `{ keys: 'alt+s', label: 'stage all' }`. */
-export function parseHints(keysLine: string): HintModel[] {
-  return keySegments(keysLine)
-    .map((segment) => {
-      const space = segment.indexOf(' ');
-      return space < 0
-        ? { keys: segment, label: '' }
-        : { keys: segment.slice(0, space), label: segment.slice(space + 1).trim() };
-    })
-    .filter((hint) => hint.keys.length > 0);
 }
 
 /**
@@ -209,19 +202,43 @@ function column(input: StatusModelInput): ColumnBlockModel[] {
   ];
 }
 
-function commits(input: StatusModelInput): { title: string; hints: HintModel[]; rows: CommitRowModel[] } {
+function commits(input: StatusModelInput): CommitsBlockModel {
+  const rows: CommitRowModel[] = input.commits.map((commit) => ({
+    // The full sha when the host has it: a key on the row asks `commitBySha()` for the
+    // commit again, and a short one is only a display form of the name.
+    id: `commit:${commit.sha ?? commit.shortSha}`,
+    sha: commit.shortSha,
+    date: commit.date,
+    author: commit.author,
+    // The tags and branches pointing at the commit belong on its row: `v0.0.4` on the
+    // head commit is how a reader tells a release from a plain commit.
+    refs: refsLabel(commit.refs ?? []),
+    subject: commit.subject,
+  }));
   return {
     title: t('status.section.commits'),
     hints: parseHints(t('hints.commits')),
-    rows: input.commits.map((commit) => ({
-      sha: commit.shortSha,
-      date: commit.date,
-      author: commit.author,
-      // The tags and branches pointing at the commit belong on its row: `v0.0.4` on the
-      // head commit is how a reader tells a release from a plain commit.
-      refs: refsLabel(commit.refs ?? []),
-      subject: commit.subject,
-    })),
+    rows,
+    // A row is its own grid so it can be selected as one box; the author column is
+    // measured once here instead of being a shared `max-content` track.
+    authorWidth: rows.reduce((width, row) => Math.max(width, row.author.length), 0),
+  };
+}
+
+/**
+ * The local branches under the file sections, beside the last commits. The screen keeps
+ * only what the status screen needs: the current branch is marked, a branch carries its
+ * tracking label and the subject of its last commit. Its keys are the branches screen's
+ * own — `Enter`/`c` checkout, `n` create, `m` merge — and the panel reads them only while
+ * a branch row is the selection, so the status keys keep their meaning on every other row.
+ */
+function branches(input: StatusModelInput): RowBlockModel {
+  return {
+    title: t('status.section.branches'),
+    role: 'section',
+    hints: parseHints(t('hints.statusBranches')),
+    rows: (input.branches ?? []).map((entry) => branchRowOf(entry)),
+    empty: t('status.noBranches'),
   };
 }
 
@@ -232,6 +249,7 @@ export function buildStatusModel(input: StatusModelInput): StatusModel {
     facts: facts(input),
     sections: sections(input.status),
     column: column(input),
+    branches: branches(input),
     commits: commits(input),
     hints: parseHints(t('hints.global')),
     cleanText: t('status.clean'),

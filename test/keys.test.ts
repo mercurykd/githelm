@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { chordOf, DOC_KEYS, DOC_NEEDS_LINE, resolveDocKey, resolveKey, resolveScreenKey, SCREEN_NEEDS_ROW } from '../src/webview/keys';
+import { chordOf, DOC_KEYS, DOC_NEEDS_LINE, resolveDocKey, resolveKey, resolveScreenKey, resolveStatusKey, SCREEN_NEEDS_ROW } from '../src/webview/keys';
 
 /**
  * A key press is matched by its physical key (`event.code`), because `event.key` is
@@ -103,6 +103,78 @@ describe('webview keymap', () => {
     // `Enter` alone still opens, and Alt+Shift+Enter is nobody's key.
     assert.deepEqual(resolveKey({ code: 'Enter' }), { kind: 'open' });
     assert.equal(resolveKey({ code: 'Enter', altKey: true, shiftKey: true }), undefined);
+  });
+
+  it('gives a branch row on the status screen the branches screen’s keys', () => {
+    // The row under the selection decides, as it does for the column: `c` checks out a
+    // branch and commits a file, `m` merges a branch and amends a file, `n` creates a
+    // branch from the selected one and adds a worktree anywhere else.
+    assert.deepEqual(resolveStatusKey('branch:main', { code: 'Enter' }), { kind: 'action', action: 'checkout' });
+    assert.deepEqual(resolveStatusKey('branch:main', { code: 'NumpadEnter' }), { kind: 'action', action: 'checkout' });
+    assert.deepEqual(resolveStatusKey('branch:main', { code: 'KeyC' }), { kind: 'action', action: 'checkout' });
+    assert.deepEqual(resolveStatusKey('branch:main', { code: 'KeyN' }), { kind: 'action', action: 'create' });
+    assert.deepEqual(resolveStatusKey('branch:main', { code: 'KeyM' }), { kind: 'action', action: 'merge' });
+    assert.deepEqual(resolveStatusKey('branch:main', { code: 'KeyR', shiftKey: true }), {
+      kind: 'action',
+      action: 'reset',
+    });
+    assert.deepEqual(resolveStatusKey('branch:main', { code: 'KeyG', shiftKey: true }), {
+      kind: 'action',
+      action: 'graph',
+    });
+    assert.deepEqual(resolveStatusKey('branch:main', { code: 'KeyG' }), {
+      kind: 'opener',
+      command: 'githelm.log.open',
+    }, 'plain `g` still opens the whole history');
+    // Outside a branch row the status keys keep their meaning.
+    assert.deepEqual(resolveStatusKey('staged:src/app.ts', { code: 'KeyC' }), { kind: 'action', action: 'commit' });
+    assert.deepEqual(resolveStatusKey(undefined, { code: 'KeyM' }), { kind: 'action', action: 'amend' });
+    assert.deepEqual(resolveStatusKey('worktree:D:/repo', { code: 'KeyN' }), {
+      kind: 'action',
+      action: 'worktreeAdd',
+    });
+    // A bigger variant that is not a branch key stays the status screen's: `Shift+Enter`
+    // is a worktree window and `Shift+M` aborts a merge, exactly as outside the block.
+    assert.deepEqual(resolveStatusKey('branch:main', { code: 'Enter', shiftKey: true }), {
+      kind: 'action',
+      action: 'worktreeWindow',
+    });
+    assert.deepEqual(resolveStatusKey('branch:main', { code: 'KeyM', shiftKey: true }), {
+      kind: 'action',
+      action: 'abort',
+    });
+  });
+
+  it('gives a commit row on the status screen the history screen’s keys', () => {
+    const id = 'commit:9a7e4eb0000000000000000000000000000000000';
+    assert.deepEqual(resolveStatusKey(id, { code: 'Enter' }), { kind: 'action', action: 'show' });
+    assert.deepEqual(resolveStatusKey(id, { code: 'KeyN' }), { kind: 'action', action: 'create' });
+    assert.deepEqual(resolveStatusKey(id, { code: 'KeyC' }), { kind: 'action', action: 'checkout' });
+    assert.deepEqual(resolveStatusKey(id, { code: 'KeyC', shiftKey: true }), {
+      kind: 'action',
+      action: 'cherryPick',
+    });
+    assert.deepEqual(resolveStatusKey(id, { code: 'KeyV', shiftKey: true }), {
+      kind: 'action',
+      action: 'revert',
+    });
+    assert.deepEqual(resolveStatusKey(id, { code: 'KeyF' }), { kind: 'action', action: 'fixup' });
+    assert.deepEqual(resolveStatusKey(id, { code: 'KeyR', shiftKey: true }), {
+      kind: 'action',
+      action: 'reset',
+    });
+    assert.deepEqual(resolveStatusKey(id, { code: 'KeyT' }), { kind: 'action', action: 'tag' });
+    // The status screen's own keys keep their meaning on a commit row.
+    assert.deepEqual(resolveStatusKey(id, { code: 'KeyR' }), { kind: 'action', action: 'refresh' });
+    assert.deepEqual(resolveStatusKey(id, { code: 'KeyG' }), {
+      kind: 'opener',
+      command: 'githelm.log.open',
+    });
+    // And the commit keys do not leak to a file row.
+    assert.deepEqual(resolveStatusKey('staged:src/app.ts', { code: 'KeyF' }), {
+      kind: 'action',
+      action: 'fetch',
+    });
   });
 
   it('handles the navigation keys by code too', () => {

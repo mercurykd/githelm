@@ -130,6 +130,20 @@ export interface StatusWebviewDeps extends ScreenPanelDeps {
   /** The same, for the keys that act on a row of the right-hand column. */
   runTarget: (action: TargetAction, repoPath: string, target: PanelTarget) => Promise<void>;
   /**
+   * The keys of the branches block: `Enter`/`c` checkout, `n` create, `m` merge and
+   * `Shift+G` the branch's graph, on the row under the selection. The host runs the
+   * branches screen's own implementation, so the panel asks the same questions and prints
+   * the same notices.
+   */
+  runBranch: (action: ScreenAction, repoPath: string, ids: readonly string[]) => Promise<void>;
+  /**
+   * The keys of the last-commits block: `Enter` opens the commit, `n` branches from it,
+   * `c` checks out, `C` cherry-picks, `V` reverts, `f` fixups, `R` resets and `t` tags.
+   * The host runs the history screen's own implementation, so the commit is re-read from
+   * the object store and every guard and question is the graph's.
+   */
+  runLog: (action: ScreenAction, repoPath: string, ids: readonly string[]) => Promise<void>;
+  /**
    * `d`: the selected files in the built-in diff editor — a real side-by-side with syntax
    * highlighting, one multi-diff tab for the selection. The host groups the sections, so
    * staged files are read against the index and unstaged ones against the working tree.
@@ -163,6 +177,18 @@ export interface ListWebviewDeps extends ScreenPanelDeps {
 export type LogWebviewDeps = Omit<ListWebviewDeps, 'openLogRange' | 'openLogBranch'>;
 
 const NEEDS_ROWS = new Set<WebviewAction>(['stage', 'unstage', 'diff', 'open', 'ignore', 'discard']);
+
+/** The keys the last-commits rows borrow from the history screen. */
+const COMMIT_ACTIONS = new Set<WebviewAction>([
+  'show',
+  'create',
+  'checkout',
+  'cherryPick',
+  'revert',
+  'fixup',
+  'reset',
+  'tag',
+]);
 
 /** A `git:` URI of `filePath` as it is at `ref`; the built-in git extension serves it. */
 function revisionUri(repoPath: string, filePath: string, ref: string): vscode.Uri {
@@ -696,13 +722,16 @@ export class StatusWebview extends ScreenPanel {
 
   protected async buildModel(repoPath: string): Promise<ScreenModel> {
     const dateFormat = vscode.workspace.getConfiguration('githelm').get<string>('log.dateFormat', '%Y-%m-%d %H:%M');
-    const [status, remotes, stashes, worktrees, upstream, history] = await Promise.all([
+    const [status, remotes, stashes, worktrees, upstream, history, branches] = await Promise.all([
       readStatus(repoPath),
       listRemotes(repoPath),
       listStashes(repoPath),
       listWorktrees(repoPath),
       readUpstream(repoPath),
       readLog(repoPath, { limit: 10, dateFormat }),
+      // The status screen shows the local branches only: remotes are the branches screen's
+      // business, and the bottom half is a shortcut, not a second branches screen.
+      listBranchEntries(repoPath, false),
     ]);
     // The header names the repository itself, so the model needs no `remote` of its own:
     // the remotes are the column's rows.
@@ -713,6 +742,7 @@ export class StatusWebview extends ScreenPanel {
       stashes,
       worktrees,
       commits: history.commits,
+      branches,
       ...(upstream ? { upstream } : {}),
     });
   }
@@ -731,6 +761,29 @@ export class StatusWebview extends ScreenPanel {
     if (action === 'refresh') {
       await this.refresh();
       this.deps.notify(t('msg.refreshed'));
+      return;
+    }
+    // A branch row carries the branches screen's keys: the row under the selection decides,
+    // exactly as it does for the right-hand column, so `c` commits everywhere else and
+    // checks out here, `m` amends everywhere else and merges here, `n` creates a branch
+    // from the selected one instead of adding a worktree, and `G` opens its graph.
+    if (
+      ids[0]?.startsWith('branch:') &&
+      (action === 'checkout' ||
+        action === 'create' ||
+        action === 'merge' ||
+        action === 'reset' ||
+        action === 'graph')
+    ) {
+      await this.statusDeps.runBranch(action, repoPath, ids);
+      await this.settle();
+      return;
+    }
+    // A last-commits row borrows the history screen's keys. The row names the commit by
+    // its full sha, and `runLog` re-reads it from the object store before acting.
+    if (ids[0]?.startsWith('commit:') && COMMIT_ACTIONS.has(action)) {
+      await this.statusDeps.runLog(action as ScreenAction, repoPath, ids);
+      await this.settle();
       return;
     }
     // A key pressed while a row of the right-hand column is selected belongs to

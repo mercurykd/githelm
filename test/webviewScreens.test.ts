@@ -72,7 +72,7 @@ describe('branches screen as a panel', () => {
   it('shows the local branches first, with the current one marked', () => {
     const model = buildBranchesModel('/repo', [...cached, ...remotes], false);
     assert.equal(model.kind, 'branches');
-    assert.equal(model.blocks.length, 1, 'remotes are hidden until shift+r');
+    assert.equal(model.blocks.length, 1, 'remotes are hidden until a');
     const rows = model.blocks[0].rows;
     assert.deepEqual(
       rows.map((row) => row.text),
@@ -402,13 +402,14 @@ describe('the list screens keep the buffer’s keys', () => {
     assert.equal(resolveScreenKey('branches', { code: 'KeyU' }), 'upstream');
     assert.equal(resolveScreenKey('branches', { code: 'KeyX' }), 'remove');
     assert.equal(resolveScreenKey('branches', { code: 'KeyM' }), 'merge');
+    assert.equal(resolveScreenKey('branches', { code: 'KeyA' }), 'toggleRemote');
   });
 
   it('puts the bigger variants behind Shift, as the buffer does', () => {
     assert.equal(resolveScreenKey('branches', { code: 'KeyR' }), 'refresh');
-    assert.equal(resolveScreenKey('branches', { code: 'KeyR', shiftKey: true }), 'toggleRemote');
+    assert.equal(resolveScreenKey('branches', { code: 'KeyR', shiftKey: true }), 'reset');
     assert.equal(resolveScreenKey('branches', { code: 'KeyD', shiftKey: true }), 'removeRemote');
-    assert.equal(resolveScreenKey('branches', { code: 'KeyS', shiftKey: true }), 'reset');
+    assert.equal(resolveScreenKey('branches', { code: 'KeyS', shiftKey: true }), undefined, 'S is free again');
     assert.equal(resolveScreenKey('tags', { code: 'KeyU', shiftKey: true }), 'push');
     assert.equal(resolveScreenKey('tags', { code: 'KeyD', shiftKey: true }), 'removeRemote');
   });
@@ -906,10 +907,41 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
 
   it('runs a list key through the host, so the questions are the buffer’s', () => {
     assert.match(PANEL, /await this\.listDeps\.run\(action, repoPath, ids\)/);
-    // `shift+r` is display state of the screen, not a git action, so the panel keeps
+    // `a` is display state of the screen, not a git action, so the panel keeps
     // it and redraws instead of asking the host.
     assert.match(PANEL, /this\.showRemote = !this\.showRemote/);
     assert.match(PANEL, /await this\.refresh\(\)/);
+  });
+
+  it('puts the local branches beside the last commits and routes their keys', () => {
+    // The status screen's bottom half is two columns: the branches on the left, the
+    // commits on the right with 60% of the width.
+    assert.match(CLIENT, /element\('div', 'bottom'\)/);
+    assert.match(CLIENT, /renderRowBlock\(bottom, model\.branches, selectedSet\(selection\)\)/);
+    assert.match(CLIENT, /renderCommits\(bottom, model\.commits, selectedSet\(selection\)\)/);
+    assert.match(STYLE, /\.bottom \{[\s\S]*?grid-template-columns: minmax\(0, 4fr\) minmax\(0, 6fr\)/);
+    // A branch row keeps the branches screen's keys, and the host runs the one
+    // implementation the branches screen runs.
+    assert.match(CLIENT, /resolveStatusKey\(selection\.ids\[0\], event\)/);
+    assert.match(PANEL, /ids\[0\]\?\.startsWith\('branch:'\)/);
+    assert.match(PANEL, /action === 'graph'/);
+    assert.match(PANEL, /action === 'reset'/);
+    assert.match(PANEL, /await this\.statusDeps\.runBranch\(action, repoPath, ids\)/);
+    assert.match(SOURCE, /runBranch: \(action, repoPath, ids\) =>/);
+    assert.match(SOURCE, /await logWebview\.showBranch\(repo, entry\.name\)/, 'G opens the branch graph');
+    assert.match(PANEL, /listBranchEntries\(repoPath, false\)/, 'the block reads local branches only');
+  });
+
+  it('makes the last commits selectable rows with the history screen’s keys', () => {
+    // A commit row is a box of its own, so it can be selected and hovered; the author
+    // column is a measured CSS variable rather than a shared grid track.
+    assert.match(CLIENT, /item\.dataset\.id = commit\.id/);
+    assert.match(CLIENT, /--commit-author-width/);
+    assert.match(CLIENT, /model\.commits\.rows\.map\(\(row\) => row\.id\)/, 'the rows are in the arrow order');
+    assert.match(STYLE, /\.commit-row \{[\s\S]*?grid-template-columns: 8ch 17ch var\(--commit-author-width/);
+    assert.match(PANEL, /ids\[0\]\?\.startsWith\('commit:'\)/);
+    assert.match(PANEL, /await this\.statusDeps\.runLog\(action(?: as ScreenAction)?, repoPath, ids\)/);
+    assert.match(SOURCE, /runLog: \(action, repoPath, ids\) =>/);
   });
 
   it('looks the row up again in the repository instead of trusting the id', () => {
@@ -1056,7 +1088,7 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
     const branches = body('const runBranch = async', 'const runTag = async');
     const tags = body('const runTag = async', 'const commitFromIds = async');
     const log = body('const runLog = async', 'const pickRemote = async');
-    // Panel-side keys: the panel closes its own tab and redraws itself; `shift+r` is
+    // Panel-side keys: the panel closes its own tab and redraws itself; `a` is
     // display state, and the history screen keeps its filters, its order and its page.
     // `G` has no buffer equivalent at all: the branches screen hands it to the history
     // screen, so it never reaches the host's `run`.

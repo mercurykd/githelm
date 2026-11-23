@@ -2,7 +2,7 @@ import type { Submodule, SubmoduleState } from '../../git/submodules';
 import { t } from '../../i18n';
 import type { ColorRole, FactModel, ListModel, RowItemModel, RowPartModel } from '../protocol';
 import { shortSubmoduleReason } from '../../views/rowLabels';
-import { parseHints } from './status';
+import { parseHints } from './hints';
 
 /** Same single-character markers `git submodule status` uses, and the buffer prints. */
 const MARK: Record<SubmoduleState, string> = {

@@ -16,7 +16,7 @@ import type { CompareChoice } from './git/compare';
 import { markResolved, takeSide } from './git/conflicts';
 import { checkoutableRefs, commitBySha } from './git/log';
 import type { LogCommit } from './git/log';
-import { addRemote, listRemotes, readUpstream, removeRemote, setRemoteUrl } from './git/remotes';
+import { addRemote, listRemotes, removeRemote, setRemoteUrl } from './git/remotes';
 import {
   abortPendingOperation,
   deleteRemoteBranch,
@@ -142,6 +142,14 @@ export function activate(context: vscode.ExtensionContext): void {
       runWithProgress(progressFor(PROGRESS_FOR_REPO[action]), () => runRepo(action, repoPath)),
     runTarget: (action, repoPath, target) =>
       runWithProgress(progressFor(PROGRESS_FOR_TARGET[action]), () => runTarget(action, repoPath, target)),
+    // The branches block under the status files runs the branches screen's keys, so `n`
+    // asks the same question and `m` refuses the current branch in one implementation.
+    runBranch: (action, repoPath, ids) =>
+      runWithProgress(progressFor(SCREEN_COMMAND.branches[action]), () => runBranch(action, repoPath, ids)),
+    // The last-commits rows under the status files run the history screen's keys, so the
+    // commit is named on both screens by the same `runLog` and the same guards.
+    runLog: (action, repoPath, ids) =>
+      runWithProgress(progressFor(LOG_COMMAND[action]), () => runLog(action, repoPath, ids)),
     // `d`: the selected files in the built-in diff editor — the editor's own diff, in
     // both UIs, because a generated patch only looks like one.
     openDiff: (repoPath, targets) => openBuiltinDiff(repoPath, targets),
@@ -1652,7 +1660,7 @@ export function activate(context: vscode.ExtensionContext): void {
           return;
         }
         if (entry.current) {
-          notify(t('msg.notEditable'));
+          notify(t('msg.branchMergeCurrent'));
           return;
         }
         try {
@@ -1669,7 +1677,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!entry) {
           return;
         }
-        const mode = await pickResetMode();
+        const mode = await pickResetMode(t('reset.toBranch', { name: entry.name }));
         if (!mode || !(await confirmReset(mode))) {
           return;
         }
@@ -1677,6 +1685,16 @@ export function activate(context: vscode.ExtensionContext): void {
         await refreshScreens();
         await updateStatusBar();
         notify(t('msg.resetDone', { mode, target: entry.name }));
+        return;
+      }
+      case 'graph': {
+        if (!entry) {
+          return;
+        }
+        // `G` on a branch, from the branches screen or the status block: the history
+        // screen's `branch` filter already reads `git log <branch>`, so the name is
+        // handed there instead of copying the graph into a second view.
+        await logWebview.showBranch(repo, entry.name);
         return;
       }
       case 'compare': {
@@ -1881,7 +1899,12 @@ export function activate(context: vscode.ExtensionContext): void {
       case 'checkout': {
         const refs = checkoutableRefs(commit.refs);
         if (refs.length === 0) {
-          warn(t('msg.notEditable'));
+          // A commit that no branch points at is still a commit: `c` checks it out in
+          // detached HEAD, which is what the row names. The old answer was a notice
+          // about the branches screen even though the reader asked for this commit.
+          await checkoutBranch(repo, commit.sha);
+          await afterChange();
+          notify(t('msg.checkoutDetached', { name: commit.shortSha }));
           return;
         }
         const target = refs.length === 1 ? refs[0] : await vscode.window.showQuickPick(refs, { placeHolder: t('branch.pick') });
@@ -1977,7 +2000,7 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       case 'reset': {
-        const mode = await pickResetMode();
+        const mode = await pickResetMode(t('reset.toCommit', { sha: commit.shortSha }));
         if (!mode || !(await confirmReset(mode))) {
           return;
         }
@@ -2151,14 +2174,19 @@ export function activate(context: vscode.ExtensionContext): void {
     notify(t('msg.pushed'));
   };
 
-  const pickResetMode = async (): Promise<ResetMode | undefined> => {
+  /**
+   * The one reset question: the mode picker carries the target in its prompt — `Reset to
+   * HEAD`, `Reset to main`, `Reset to commit 9a7e4eb` — so the mode is the only choice,
+   * as a branch asks for its name in one box. The hard-reset confirmation stays after it.
+   */
+  const pickResetMode = async (prompt: string): Promise<ResetMode | undefined> => {
     const picked = await vscode.window.showQuickPick(
       [
         { label: t('reset.soft'), value: 'soft' as ResetMode },
         { label: t('reset.mixed'), value: 'mixed' as ResetMode },
         { label: t('reset.hard'), value: 'hard' as ResetMode },
       ],
-      { placeHolder: t('reset.pickMode') }
+      { placeHolder: prompt }
     );
     return picked?.value;
   };
@@ -2172,22 +2200,14 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   const runReset = async (repo: string): Promise<void> => {
-    const mode = await pickResetMode();
+    const target = 'HEAD';
+    const mode = await pickResetMode(t('reset.toHead'));
     if (!mode || !(await confirmReset(mode))) {
       return;
     }
-    const targets = [{ label: 'HEAD', value: 'HEAD' }];
-    const upstream = await readUpstream(repo);
-    if (upstream) {
-      targets.push({ label: `${t('reset.targetUpstream')} (${upstream.ref})`, value: '@{u}' });
-    }
-    const picked = await vscode.window.showQuickPick(targets, { placeHolder: t('reset.pickTarget') });
-    if (!picked) {
-      return;
-    }
-    await resetTo(repo, mode, picked.value);
+    await resetTo(repo, mode, target);
     await updateStatusBar();
-    notify(t('msg.resetDone', { mode, target: picked.label }));
+    notify(t('msg.resetDone', { mode, target }));
   };
 
   const runAbort = async (repo: string): Promise<void> => {

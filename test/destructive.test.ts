@@ -69,9 +69,39 @@ describe('destructive actions', () => {
     assert.match(helper, /mode !== 'hard'/, 'soft and mixed reset only move the pointer, so they do not ask');
   });
 
+  it('chooses the reset mode in one step, with the target in the picker prompt', () => {
+    // `R` on the status screen, `S` on a branch and `R` on a commit all open one mode
+    // picker; its prompt says what the reset target is, so no second question follows.
+    const picker = helperOf(HOST, 'pickResetMode');
+    assert.match(picker, /showQuickPick\(/, 'the modes are one picker');
+    assert.match(picker, /placeHolder: prompt/, 'the prompt names the target');
+    assert.doesNotMatch(HOST, /askResetTarget/, 'there is no second, target prompt');
+    assert.match(helperOf(HOST, 'runReset'), /pickResetMode\(t\('reset\.toHead'\)\)/, 'no row means HEAD');
+    assert.match(
+      helperOf(HOST, 'runBranch'),
+      /pickResetMode\(t\('reset\.toBranch', \{ name: entry\.name \}\)\)/,
+      'a branch row names the branch'
+    );
+    assert.match(
+      helperOf(HOST, 'runLog'),
+      /pickResetMode\(t\('reset\.toCommit', \{ sha: commit\.shortSha \}\)\)/,
+      'a commit row names the commit'
+    );
+  });
+
   it('asks before it rewrites history with an undo commit', () => {
     const body = helperOf(HOST, 'runLog');
     assert.ok(body.includes('confirm.revert'), 'revert asks');
+  });
+
+  it('checks out a commit that no branch points at instead of sending the reader away', () => {
+    // The old checkout looked only at the decorations and answered with the
+    // "branches live on the branches screen" notice; a commit is still a commit.
+    const body = helperOf(HOST, 'runLog');
+    assert.match(body, /checkoutableRefs\(commit\.refs\)/);
+    assert.match(body, /checkoutBranch\(repo, commit\.sha\)/, 'the commit itself is the fallback');
+    assert.match(body, /msg\.checkoutDetached/, 'and the notice says HEAD is detached');
+    assert.doesNotMatch(body, /if \(refs\.length === 0\) \{\s*warn\(t\('msg\.notEditable'\)\)/, 'no misleading notice');
   });
 
   it('asks before it drops the conflict resolutions in progress', () => {

@@ -96,6 +96,9 @@ export interface ColumnBlockModel {
 }
 
 export interface CommitRowModel {
+  /** Stable row id, `commit:<full sha>`, so a key can name the commit back to the host. */
+  id: string;
+  /** The short sha the row prints. */
   sha: string;
   date: string;
   author: string;
@@ -108,6 +111,12 @@ export interface CommitsBlockModel {
   title: string;
   hints: HintModel[];
   rows: CommitRowModel[];
+  /**
+   * Width of the author column in characters: the longest author in the block. Each row
+   * is its own grid — a row has to be a box to be selected and hovered — so the shared
+   * grid of the table is replaced by one measured column.
+   */
+  authorWidth: number;
 }
 
 /** A `LABEL: value` pair of the header. */
@@ -138,6 +147,8 @@ export interface StatusModel {
   facts: FactModel[];
   sections: SectionModel[];
   column: ColumnBlockModel[];
+  /** The local branches, under the files and beside the last commits. */
+  branches: RowBlockModel;
   commits: CommitsBlockModel;
   hints: HintModel[];
   /** Shown instead of the file list when nothing is staged, changed or untracked. */
@@ -384,6 +395,16 @@ export type WebviewAction =
   | 'ignore'
   | 'discard'
   | 'commit'
+  /** The branches block: the same names the branches screen uses for its keys. */
+  | 'checkout'
+  | 'create'
+  | 'merge'
+  | 'graph'
+  /** The last-commits block: the same names the history screen uses for its keys. */
+  | 'show'
+  | 'cherryPick'
+  | 'revert'
+  | 'fixup'
   | 'tag'
   | 'stash'
   | 'refresh'

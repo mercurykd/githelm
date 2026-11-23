@@ -2,7 +2,7 @@ import { BranchEntry } from '../../git/actions';
 import { t } from '../../i18n';
 import { trackingLabel } from '../../views/rowLabels';
 import type { ColorRole, FactModel, ListModel, RowBlockModel, RowItemModel } from '../protocol';
-import { parseHints } from './status';
+import { parseHints } from './hints';
 
 /**
  * The branches screen as the panel draws it: one block of local branches (the current
@@ -53,7 +53,7 @@ export function buildBranchesModel(
       title: section.title,
       role: 'section',
       hints: [],
-      rows: section.list.map((entry) => rowOf(entry)),
+      rows: section.list.map((entry) => branchRowOf(entry)),
     });
   }
 
@@ -68,7 +68,11 @@ export function buildBranchesModel(
   };
 }
 
-function rowOf(entry: BranchEntry): RowItemModel {
+/**
+ * One branch as both screens draw it: the status screen's `branches` block under the file
+ * sections and the branches screen use the same row, marker included.
+ */
+export function branchRowOf(entry: BranchEntry): RowItemModel {
   const tracking = trackingLabel(entry);
   const nameRole: ColorRole = entry.current ? 'branch' : entry.isRemote ? 'meta' : 'modified';
   const row: RowItemModel = {

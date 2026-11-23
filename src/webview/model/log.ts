@@ -10,7 +10,7 @@ import type {
   LogRowModel,
   LogSegmentModel,
 } from '../protocol';
-import { parseHints } from './status';
+import { parseHints } from './hints';
 
 export interface LogModelInput {
   repoPath: string;

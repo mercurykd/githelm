@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { RepoStatus } from '../src/git/status';
-import { buildStatusModel, fileTargetsOf, parseHints, pathsOf, rowId, rowOrder, sectionsOf } from '../src/webview/model/status';
+import { buildStatusModel, fileTargetsOf, pathsOf, rowId, rowOrder, sectionsOf } from '../src/webview/model/status';
+import { parseHints } from '../src/webview/model/hints';
 
 const STATUS: RepoStatus = {
   branch: 'main',
@@ -23,7 +24,15 @@ const input = {
   remotes: [{ name: 'origin', url: 'git@example.com:me/repo.git' }],
   remote: { name: 'origin', url: 'git@example.com:me/repo.git' },
   stashes: [{ ref: 'stash@{0}', subject: 'WIP on main' }],
-  commits: [{ shortSha: '9a7e4eb', date: '2026-11-13 16:07', author: 'mercury', subject: 'fix the thing' }],
+  commits: [
+    {
+      sha: '9a7e4eb0000000000000000000000000000000000',
+      shortSha: '9a7e4eb',
+      date: '2026-11-13 16:07',
+      author: 'mercury',
+      subject: 'fix the thing',
+    },
+  ],
   worktrees: [],
 };
 
@@ -130,7 +139,7 @@ describe('status model', () => {
     // screen cannot run answers with a toast instead of doing nothing.
     assert.deepEqual(model.sections[0].hints.map((hint) => hint.keys), ['s', 'u', 'd', 'D', 'i', 'enter']);
     assert.deepEqual(model.column[0].hints.map((hint) => hint.keys), ['A', 'e', 'x', 'f', 'P', 'U']);
-    assert.deepEqual(model.commits.hints, [{ keys: 'g', label: 'graph' }]);
+    assert.deepEqual(model.commits.hints.map((hint) => hint.keys), ['enter', 'n', 'c', 'C', 'V', 'f', 'R', 't', 'g']);
     assert.deepEqual(model.hints.map((hint) => hint.keys), ['c', 'm', 'alt+s', 'alt+u', 'R', 'b', 't', 'T', 'S', 'F', 'l', 'r', 'q']);
   });
 
@@ -138,12 +147,52 @@ describe('status model', () => {
     const block = buildStatusModel(input).commits;
     assert.equal(block.title, 'last commits');
     assert.deepEqual(block.rows[0], {
+      id: 'commit:9a7e4eb0000000000000000000000000000000000',
       sha: '9a7e4eb',
       date: '2026-11-13 16:07',
       author: 'mercury',
       refs: '',
       subject: 'fix the thing',
     });
+    assert.equal(block.authorWidth, 7, 'the author column is measured for the row grids');
+  });
+
+  it('lists the local branches beside the commits, with the branches screen’s row', () => {
+    const model = buildStatusModel({
+      ...input,
+      branches: [
+        {
+          name: 'main',
+          current: true,
+          upstream: 'origin/main',
+          ahead: 2,
+          behind: 0,
+          subject: 'fix the thing',
+          isRemote: false,
+        },
+        { name: 'topic', current: false, upstream: '', ahead: 0, behind: 0, subject: 'new feature', isRemote: false },
+      ],
+    });
+    assert.equal(model.branches.title, 'branches');
+    assert.deepEqual(
+      model.branches.rows.map((row) => row.id),
+      ['branch:main', 'branch:topic']
+    );
+    assert.equal(model.branches.rows[0].marker, '*', 'the current branch is marked as on the branches screen');
+    assert.equal(model.branches.rows[1].marker, ' ');
+    assert.equal(model.branches.rows[0].note, 'fix the thing');
+    assert.match(model.branches.rows[0].parts?.[0].text ?? '', /origin\/main/);
+    assert.deepEqual(
+      model.branches.hints.map((hint) => hint.keys),
+      ['enter', 'n', 'm', 'R', 'G'],
+      'the block advertises its own reading of the keys'
+    );
+  });
+
+  it('says there are no local branches instead of drawing an empty block', () => {
+    const model = buildStatusModel(input);
+    assert.deepEqual(model.branches.rows, []);
+    assert.equal(model.branches.empty, 'no local branches');
   });
 
   it('puts the tags and branches of a commit on its own row', () => {

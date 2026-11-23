@@ -2,8 +2,8 @@ import {
   DOC_NEEDS_LINE,
   resolveCommonKey,
   resolveDocKey,
-  resolveKey,
   resolveScreenKey,
+  resolveStatusKey,
   SCREEN_NEEDS_ROW,
   type KeyCommand,
 } from '../keys.js';
@@ -84,7 +84,12 @@ function order(): string[] {
       // The right-hand column is part of the same screen, so the arrows walk into it
       // exactly as the caret does in the text buffer.
       const column = model.column.flatMap((block) => block.rows.map((row) => row.id));
-      return [...files, ...column];
+      // And so is the branch block under the files: its rows are selectable, and their
+      // keys are the branches screen's (see `resolveStatusKey`).
+      const branches = model.branches.rows.map((row) => row.id);
+      // The last commits are rows of the same kind: the history screen's keys act on them.
+      const commits = model.commits.rows.map((row) => row.id);
+      return [...files, ...column, ...branches, ...commits];
     }
     case 'log':
       // The filters are inputs above the list, not rows, so the arrows walk the history.
@@ -304,7 +309,7 @@ function renderColumn(container: HTMLElement, current: StatusModel): void {
   container.append(aside);
 }
 
-function renderCommits(container: HTMLElement, block: CommitsBlockModel): void {
+function renderCommits(container: HTMLElement, block: CommitsBlockModel, selected: Set<string>): void {
   if (block.rows.length === 0) {
     return;
   }
@@ -312,8 +317,17 @@ function renderCommits(container: HTMLElement, block: CommitsBlockModel): void {
   section.append(blockTitle(block.title, block.rows.length, 'section'));
   section.append(hintLine(block.hints));
   const list = element('ul', 'commit-rows');
+  list.setAttribute('role', 'listbox');
+  list.setAttribute('aria-multiselectable', 'true');
+  // Each row is its own grid so it can be selected and hovered as one box; the author
+  // column is measured by the model so every row still starts its message together.
+  list.style.setProperty('--commit-author-width', `${Math.max(1, block.authorWidth)}ch`);
   for (const commit of block.rows) {
-    const item = element('li', 'commit-row');
+    const classes = selected.has(commit.id) ? 'row commit-row selected' : 'row commit-row';
+    const item = element('li', classes);
+    item.dataset.id = commit.id;
+    item.setAttribute('role', 'option');
+    item.setAttribute('aria-selected', selected.has(commit.id) ? 'true' : 'false');
     // The buffer leaves the subject unpainted, so the panel does too.
     item.append(element('span', 'commit-sha role-hash', commit.sha));
     item.append(element('span', 'commit-date role-meta', commit.date));
@@ -594,7 +608,13 @@ function render(): void {
     renderSections(main, model);
     renderColumn(main, model);
     app.append(main);
-    renderCommits(app, model.commits);
+    // The bottom half is two columns: the local branches on the left, the last commits
+    // on the right. The commits keep the larger share (60%), because their rows carry a
+    // sha, a date, an author and a message and lose their alignment first.
+    const bottom = element('div', 'bottom');
+    renderRowBlock(bottom, model.branches, selectedSet(selection));
+    renderCommits(bottom, model.commits, selectedSet(selection));
+    app.append(bottom);
   } else if (model.kind === 'log') {
     // Filters above the history, one under the other: the history is a character grid
     // and needs the whole width, so it is not squeezed into a second column.
@@ -840,14 +860,21 @@ function copySelection(): void {
     return;
   }
   const wanted = new Set(selection.ids);
-  // The status screen copies file paths, the buffers' habit; a list screen copies the
+  // The status screen copies file paths, the buffers' habit; a branch row copies the
+  // branch's name and a commit row its short sha and subject. A list screen copies the
   // name of what is selected — a branch, a tag, a key.
   const texts =
     model.kind === 'status'
-      ? model.sections
-          .flatMap((section) => section.rows)
-          .filter((row) => wanted.has(row.id))
-          .map((row) => row.path)
+      ? [
+          ...model.sections
+            .flatMap((section) => section.rows)
+            .filter((row) => wanted.has(row.id))
+            .map((row) => row.path),
+          ...model.branches.rows.filter((row) => wanted.has(row.id)).map((row) => row.text),
+          ...model.commits.rows
+            .filter((row) => wanted.has(row.id))
+            .map((row) => `${row.sha} ${row.subject}`),
+        ]
       : model.kind === 'log'
         ? model.rows
             .filter((row) => wanted.has(row.id))
@@ -933,7 +960,7 @@ document.addEventListener('keydown', (event) => {
   // creates a tag there instead of tagging HEAD, and falls back to the keys every
   // panel has: movement, selection, copy and the screen openers.
   if (!model || model.kind === 'status') {
-    const resolved = resolveKey(event);
+    const resolved = resolveStatusKey(selection.ids[0], event);
     if (!resolved) {
       return;
     }

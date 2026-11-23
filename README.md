@@ -14,7 +14,7 @@ Every screen is a webview panel — no trees, no mouse, and no second interface 
 
 | Screen | Highlights |
 | --- | --- |
-| **Status** (`alt+g`) | staged / unstaged / untracked / conflicts, stage a file, a whole section or the selection, commit, amend, stash, remotes, worktrees, fetch/pull/push, reset, abort merge, diff, open file |
+| **Status** (`alt+g`) | staged / unstaged / untracked / conflicts, stage a file, a whole section or the selection, commit, amend, stash, remotes, worktrees, a local-branches block (checkout / create / merge / graph / reset), last-commit actions (open, branch, checkout, cherry-pick, revert, fixup, reset, tag), fetch/pull/push, abort merge, diff, open file |
 | **Diff** | stage or unstage the hunk under the cursor or the selected lines, `Enter` opens the file at that line |
 | **History** | ASCII graph, commit details, branch/checkout/cherry-pick/revert, fixup + autosquash, filters by message/author/branch/date and `git log -S` / `-G`, sort cycles, compare two commits, reset to a commit |
 | **Branches** | local and remote (toggle), upstream and divergence, checkout / create / rename / delete / set-upstream / merge / reset, and `G` opens the graph of one branch |
@@ -47,7 +47,7 @@ npm install
 npm run build
 ```
 
-Then either press `F5` (Extension Development Host) or install the packaged build:
+Then either press `F5` (Extension Development Host) or install the packaged build. The launch config passes `--disable-extensions`, so installed extensions stay inactive in the dev host and an installed copy of Git Helm cannot collide with the development copy — including after you open another folder.
 
 ```bash
 npx @vscode/vsce package --no-dependencies
@@ -96,7 +96,7 @@ Every screen is headed the same way: one line naming it — the repository, an e
 | `n` | add a worktree: path, then branch / tag / commit (a missing branch is created from `HEAD`) |
 | `W` | prune worktree entries whose directory is gone |
 | `f` / `P` / `U` | fetch / pull / push |
-| `R` | reset: pick soft/mixed/hard, then `HEAD` or the upstream |
+| `R` | reset: one mode picker whose prompt says `Reset to HEAD` — choose soft/mixed/hard and the reset runs |
 | `M` | abort the merge, revert or cherry-pick in progress — it asks first, the resolutions of the conflicts are lost |
 | `x` | delete the stash / tag / remote / worktree under the cursor; every one of them asks first, and a dropped stash is gone — the list is the only place it lived |
 | `e` | edit the remote URL or move the tag to `HEAD` |
@@ -113,9 +113,11 @@ The status header is `D:/work/app — status` — the path, the em dash, the scr
 
 Every hint is one `key label` pair, and the line wraps when the panel is narrow: the header is as wide as the panel, so no key list has to be read in two places. The `remotes` block lists every remote with its URL; the "last commits" block always shows subject, author and date, with the tags and branches of a commit as the first words of its message (`[HEAD -> main tag: v0.0.4] feat: …`) — the tag is part of the message, not a column, so a long message wraps under the message column and the tags are never cut short.
 
+The bottom of the status screen is two blocks: `## branches (n)` on the left and `## last commits (n)` on the right, the commits keeping 60% of the width. The branch block lists local branches only — the current one marked `*`, with its tracking label and the subject of its last commit. While a branch row is selected it answers to the branches screen's keys: `Enter` or `c` checks out, `n` creates a new branch from the selected one, `m` merges it into the current branch, `R` resets to it (one mode picker with prompt `Reset to <name>`), and `G` opens that branch's graph. The commit rows are selectable too and keep the history screen's keys: `Enter` opens the commit, `n` branches from it, `c` checks out its branch (or the commit itself in detached HEAD when no branch points at it), `C` cherry-picks it, `V` reverts it, `f` fixups staged changes into it, `R` resets to it and `t` tags it; `g` still opens the whole history. Everywhere else the same keys keep their status meaning (`c` commit, `m` amend, `n` add a worktree), so the row under the cursor decides and each block's hint line names that reading.
+
 The `stash` block lists the stashes of the repository and is drawn even when there are none, because its keys (`z stash`, `enter files`, `d diff`, `a apply`, `p pop`, `x drop`) are the only place the status buffer says how to make the first one. `z` decides what to stash from the cursors: files under them go in and nothing else, so no question is asked. With the cursor on a section title the whole section goes in; with no file under the cursor a list offers `--staged` (the index alone) and `-u` (untracked files as well), at most one of the two, and Enter with nothing picked stashes the working tree. Nothing is on by default: an untracked file is stashed only when `-u` says so.
 
-Nothing that deletes or drops happens without a question first: `D` discard, `x` delete (stash, tag, remote, worktree), `x` on the branches and tags screens, `D` on the branches screen for a remote branch, `R`/`S` hard reset, `V` revert, `M` abort, `c` clear the action log. `p` pop does not ask: it applies the stash before dropping the entry, so the changes are in the working tree either way.
+Nothing that deletes or drops happens without a question first: `D` discard, `x` delete (stash, tag, remote, worktree), `x` on the branches and tags screens, `D` on the branches screen for a remote branch, `R` hard reset, `V` revert, `M` abort, `c` clear the action log. `p` pop does not ask: it applies the stash before dropping the entry, so the changes are in the working tree either way.
 
 The `worktrees` block lists every checkout of the repository with a `*` on the one the panel belongs to; the cursor column decides which row a key acts on. `Enter` on a row switches to that worktree (its own status buffer), `Shift+Enter` opens that folder in a new window, `Alt+Enter` reopens this window on it — it asks first, since the current folder, layout and unsaved editors are lost — `n` adds one, `x` removes the worktree under the cursor — a dirty one asks for `--force` instead of failing, and the current worktree can only be removed from another one. `W` drops entries whose directory is already gone. When the active buffer belongs to a linked worktree, the status bar names it next to the branch.
 
@@ -142,11 +144,11 @@ The author column is shared with the history graph: its width is the longest log
 | `Enter` | open the commit screen: author, date, message, and the files it touched |
 | `n` | branch from the commit |
 | `t` | create a tag on the commit under the cursor — the row shows the new ref right away |
-| `c` | checkout the branch of the commit |
+| `c` | checkout the branch of the commit — or the commit itself in detached HEAD when no branch points at it |
 | `C` | cherry-pick the commit onto the current branch |
 | `V` | revert the commit: a new commit that undoes it (confirm first; merge commits ask for the mainline parent; a conflict is aborted with `M` on the status screen) |
 | `f` | fixup the staged changes into the commit, then autosquash |
-| `R` | reset to the commit (soft/mixed/hard) |
+| `R` | reset to the commit: one mode picker whose prompt says `Reset to commit <sha>` |
 | `a` | toggle all branches |
 | `/` | filters: message, author, branch, date range, `git log -S` / `-G` |
 | `x` | clear the filters |
@@ -172,8 +174,8 @@ The `branch` filter reads the history of one branch the way `git log <branch>` d
 | `D` | delete a remote branch |
 | `m` | merge into the current branch |
 | `d` | compare — one branch against `HEAD`, two against each other; `diff …` opens the patch, `log …` the graph of the range |
-| `S` | reset the branch (soft/mixed/hard) |
-| `R` | toggle local/remote branches |
+| `R` | reset the branch: one mode picker whose prompt says `Reset to <name>` |
+| `a` | toggle local/remote branches |
 | `g` | open the graph |
 | `G` | the graph of the branch under the cursor: the history screen opens with its `branch` filter already set to that branch — local, remote, a tag or a sha, the same field and the same `git log <branch>` behind it |
 | `T` | tags screen |
@@ -314,7 +316,7 @@ npm run typecheck    # tsc --noEmit
 npm test             # build the extension and the test tree, validate the manifest, run the suite
 ```
 
-`npm test` runs **565 tests** (560 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
+`npm test` runs **573 tests** (568 passing, 5 skipped) directly against real temporary git repositories — the `git` binary is never mocked. The same command also runs `npm run validate`, which fails when a keybinding or a menu entry points at an unknown command, or when `main`, the icon, the shims, `CHANGELOG.md` or one of the READMEs is missing, or a README lost the link to another language.
 
 The screenshots in this README are demos of the status and history screens, kept in `media/demo/`. They are snapshots, not captures produced by the test suite, so a layout change means making new ones by hand.
 

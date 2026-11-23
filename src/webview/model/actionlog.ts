@@ -1,7 +1,7 @@
 import { allActions, formatAction, formatClock } from '../../git/actionLog';
 import { t } from '../../i18n';
 import type { FactModel, ListModel, RowItemModel } from '../protocol';
-import { parseHints } from './status';
+import { parseHints } from './hints';
 
 /**
  * The action log as the panel draws it: every `git` call the extension made, newest
