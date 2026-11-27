@@ -133,6 +133,34 @@ export async function stashFiles(repoPath: string, ref: string): Promise<StashFi
   return files;
 }
 
+/**
+ * The revision each stashed file's content lives under. A tracked file is in the stash
+ * commit itself; an untracked file stashed with `-u` lives in the stash's third parent;
+ * a file deleted by the stash is in neither and is left out. The list is read twice
+ * instead of asking git per file, so a large stash does not turn into a process storm.
+ */
+export async function stashRefsForFiles(
+  repoPath: string,
+  ref: string,
+  files: readonly string[]
+): Promise<Map<string, string>> {
+  const wanted = new Set(files);
+  const refs = new Map<string, string>();
+  for (const revision of [ref, `${ref}^3`]) {
+    const result = await git(repoPath, ['ls-tree', '-r', '--name-only', revision]);
+    if (result.code !== 0) {
+      continue;
+    }
+    for (const line of result.stdout.split('\n')) {
+      const path = line.replace(/\r$/, '');
+      if (path.length > 0 && wanted.has(path) && !refs.has(path)) {
+        refs.set(path, revision);
+      }
+    }
+  }
+  return refs;
+}
+
 export async function stashFileDiff(repoPath: string, ref: string, path: string): Promise<string> {
   // `git stash show` does not take a pathspec, so diff the stash against its
   // first parent instead — that is exactly what `stash show -p` prints.

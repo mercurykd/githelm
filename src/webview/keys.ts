@@ -407,6 +407,12 @@ export const DOC_KEYS: Record<DocKind, Record<string, ScreenAction>> = {
   },
   stash: {
     KeyD: 'fileDiff',
+    KeyT: 'filesAtRef',
+    KeyR: 'refresh',
+    KeyQ: 'close',
+  },
+  compare: {
+    KeyD: 'fileDiff',
     KeyR: 'refresh',
     KeyQ: 'close',
   },
@@ -435,7 +441,8 @@ export const DOC_KEYS: Record<DocKind, Record<string, ScreenAction>> = {
 /** The actions of a sub-screen that need a line under them. */
 export const DOC_NEEDS_LINE: Record<DocKind, ScreenAction[]> = {
   commit: ['fileDiff', 'filesAtRef'],
-  stash: ['fileDiff'],
+  stash: ['fileDiff', 'filesAtRef'],
+  compare: ['fileDiff'],
   conflict: ['ours', 'theirs', 'base', 'mergeEditor', 'resolve'],
   file: [],
   // The init screen needs no selected row: the screen is one action, and `Enter` without a

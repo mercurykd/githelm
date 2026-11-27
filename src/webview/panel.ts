@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { listBranchEntries } from '../git/actions';
-import { choiceShowsDiff, compareChoices, compareFiles, headSha, planCompare, refTip } from '../git/compare';
+import { choiceShowsDiff, compareChoices, headSha, planCompare, refTip } from '../git/compare';
 import type { ComparePlan } from '../git/compare';
 import { LOG_PAGE, LogCommit, LogFilter, LogSort, commitBySha, readLog, revisionExists } from '../git/log';
 import { addToGitignore } from '../git/ignore';
@@ -171,6 +171,11 @@ export interface ListWebviewDeps extends ScreenPanelDeps {
    * on the branch's own graph with the field filled in, not on a history to search in.
    */
   openLogBranch: (repoPath: string, branch: string) => Promise<void>;
+  /**
+   * The `diff …` answer of a compare: the range's files as one document, where `d` opens
+   * one file or the whole list. The panel owns the screen, the host owns the list.
+   */
+  openCompareList: (repoPath: string, plan: ComparePlan) => Promise<void>;
 }
 
 /** What the history screen needs: the keys of its rows — it is where a range is shown. */
@@ -288,15 +293,11 @@ export async function openDiffEntries(
 }
 
 /**
- * The `diff …` half of a compare, for every panel: the files that differ across the
- * plan's range, opened in the built-in multi-diff at both revisions. Returns false when
- * nothing differs, so the caller can say that in its own words. The revisions are
- * `git:` URIs, which is how the built-in editor reads a file as it was at a commit
- * without touching the working tree.
+ * The `diff …` half of a compare is a file list rather than a multi-diff tab: the panel
+ * asks the host for the range's document, and `d` inside it opens one file or all of them.
+ * The list is what the reader lands on, so a range with many files does not open a tab
+ * storm before anything can be read.
  */
-async function openCompareDiff(repoPath: string, plan: ComparePlan): Promise<boolean> {
-  return openRangeDiff(repoPath, plan.range, plan.diffLeft, plan.diffRight, plan.label);
-}
 
 /**
  * `d` in the status panel: the selected files in the built-in diff editor.
@@ -380,34 +381,7 @@ export async function openFilesAtRef(repoPath: string, files: readonly string[],
   }
 }
 
-/**
- * The `diff` of a range (`A..B`) as one multi-diff tab: every file the range touches,
- * both sides read at their own revision. Returns false when nothing differs, so the
- * caller can say that in its own words.
- */
-export async function openRangeDiff(
-  repoPath: string,
-  range: string,
-  leftRef: string,
-  rightRef: string,
-  label: string
-): Promise<boolean> {
-  const files = await compareFiles(repoPath, range);
-  if (files.length === 0) {
-    return false;
-  }
-  const left = refName(leftRef);
-  const right = refName(rightRef);
-  await openDiffEntries(
-    files.map((filePath) => ({
-      title: `${filePath} (${left}) ↔ ${filePath} (${right})`,
-      left: revisionUri(repoPath, filePath, leftRef),
-      right: revisionUri(repoPath, filePath, rightRef),
-    })),
-    `${label} — ${files.length}`
-  );
-  return true;
-}
+
 /** The only commands the webview may ask the host to run. */
 const OPENERS = new Set([
   'githelm.log.open',
@@ -1069,9 +1043,7 @@ export class ListWebview extends ScreenPanel {
       this.deps.notify(t('compare.inPanel', { range: plan.label }));
       return;
     }
-    if (!(await openCompareDiff(repoPath, plan))) {
-      this.deps.notify(t('compare.noChanges', { range: plan.label }));
-    }
+    await this.listDeps.openCompareList(repoPath, plan);
   }
 }
 
@@ -1278,9 +1250,7 @@ export class LogWebview extends ScreenPanel {
       this.deps.notify(t('compare.inPanel', { range: plan.label }));
       return;
     }
-    if (!(await openCompareDiff(repoPath, plan))) {
-      this.deps.notify(t('compare.noChanges', { range: plan.label }));
-    }
+    await this.logDeps.openCompareList(repoPath, plan);
   }
 
   /**

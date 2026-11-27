@@ -764,7 +764,7 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
   it('draws every sub-screen in the panel', () => {
     // Every sub-screen is a document of the panel, rendered by its own class: `prepare`
     // is the render, and the panel is the only host.
-    for (const doc of ['commit', 'stash', 'conflict', 'file', 'init']) {
+    for (const doc of ['commit', 'stash', 'compare', 'conflict', 'file', 'init']) {
       assert.match(KEYFILE, new RegExp(`^  ${doc}: \\{`, 'm'), `${doc} has a key table`);
     }
     for (const method of [
@@ -1012,12 +1012,13 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
     assert.match(compare, /planCompare\(repoPath, picked\.value/, 'one plan names the range both halves use');
     assert.match(compare, /this\.range = plan\.range/, 'a log range becomes the panel’s own range');
     assert.match(compare, /this\.leftRight = plan\.mode === 'three' \? true : undefined/);
-    assert.match(compare, /openCompareDiff\(repoPath, plan\)/, 'a diff opens the built-in editor');
-    assert.match(
-      PANEL,
-      /export async function openRangeDiff\(\r?\n  repoPath: string,\r?\n  range: string,/
-    );
-    assert.match(PANEL, /plan\.diffLeft/, 'a ... diff starts at the merge base');
+    assert.match(compare, /this\.logDeps\.openCompareList\(repoPath, plan\)/, 'a diff opens the range file list');
+    assert.match(SOURCE, /openCompareList: \(repoPath, plan\) =>\s*openCompareDoc/, 'the host owns the list');
+    assert.match(SOURCE, /const openCompareDoc = async/, 'the range is a document');
+    assert.match(SOURCE, /compareDoc\.prepare\(/, 'the document is the range file list');
+    assert.match(SOURCE, /openCompareFileDiffs/, 'd inside the list opens the diff');
+    assert.match(SOURCE, /plan\.diffLeft/, 'a ... diff starts at the merge base');
+    assert.ok(!/openRangeDiff/.test(PANEL), 'a compare no longer opens the multi-diff directly');
     assert.ok(!/compareBuffer|logBuffer/.test(PANEL), 'the panel never opens a text buffer of its own');
     assert.match(SOURCE, /showQuickPick\(compareChoices\(\)/, 'the buffer lists them from the same table');
   });
@@ -1036,7 +1037,7 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
     assert.match(branches, /compareChoices\(\)/, 'the same six choices as the history screen');
     assert.match(branches, /planCompare\(repoPath, picked\.value, left\.sha, rightSha, left\.name, rightLabel\)/);
     assert.match(branches, /this\.listDeps\.openLogRange\(repoPath, plan\.range, plan\.mode === 'three'\)/);
-    assert.match(branches, /openCompareDiff\(repoPath, plan\)/);
+    assert.match(branches, /this\.listDeps\.openCompareList\(repoPath, plan\)/);
     // The host gives the panel the screen to hand a range to, and that screen is the log.
     assert.match(SOURCE, /openLogRange: \(repoPath, range, leftRight\) => logWebview\.showRange\(repoPath, range, leftRight\)/);
     assert.match(PANEL, /async showRange\(repoPath: string, range: string, leftRight: boolean\)/);

@@ -32,7 +32,16 @@ import type { ResetMode } from './git/ops';
 import { findRepoRoot, initRepository } from './git/repo';
 import { amendCommit, createFixupCommit, hasStagedChanges, headMessage, parentOf } from './git/rewrite';
 import { addIntentToAdd } from './git/stage';
-import { applyStash, dropStash, planStash, popStash, pushStash, stashFiles, StashOptions } from './git/stash';
+import {
+  applyStash,
+  dropStash,
+  planStash,
+  popStash,
+  pushStash,
+  stashFiles,
+  stashRefsForFiles,
+  StashOptions,
+} from './git/stash';
 import type { StashCandidate } from './git/stash';
 import { entriesOf, readStatus } from './git/status';
 import { createTag, deleteRemoteTag, deleteTag, listTags, moveTag, pushTag, remoteTag } from './git/tags';
@@ -44,6 +53,7 @@ import { ForgeKind, ForgeRemote, parseForgeRemote } from './forge/remote';
 import { runInteractiveRebase, RebaseAbortedError } from './rebase/bridge';
 import { createReporter } from './util/notifier';
 import { ConflictDoc } from './views/conflictDoc';
+import { CompareDoc } from './views/compareDoc';
 import { StashDoc } from './views/stashDoc';
 import { CommitDoc } from './views/commitDoc';
 import { formatError } from './util/format';
@@ -64,7 +74,6 @@ import {
   StatusWebview,
   openFileDiffs,
   openFilesAtRef,
-  openRangeDiff,
   openRevisionDiffs,
 } from './webview/panel';
 import type { DocWebviewDeps, ListWebviewDeps, TargetAction } from './webview/panel';
@@ -91,6 +100,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const blameGutter = new BlameGutter();
   const historyDoc = new HistoryDoc(docs, highlighter, blameGutter);
   const stashDoc = new StashDoc(docs, highlighter);
+  const compareDoc = new CompareDoc(docs, highlighter);
   const conflictDoc = new ConflictDoc(docs, highlighter);
 
   context.subscriptions.push(
@@ -209,6 +219,9 @@ export function activate(context: vscode.ExtensionContext): void {
     // `G` on a branch opens that branch's graph: the history screen's branch filter is the
     // one implementation of `git log <branch>`, so the key hands it the name.
     openLogBranch: (repoPath, branch) => logWebview.showBranch(repoPath, branch),
+    // A `diff …` answer lands on the range's file list; `d` inside it opens the editor.
+    openCompareList: (repoPath, plan) =>
+      openCompareDoc(repoPath, plan.range, plan.diffLeft, plan.diffRight, plan.label),
   });
 
   /** The same table for the history screen: only the keys that wait for git have a line. */
@@ -245,6 +258,8 @@ export function activate(context: vscode.ExtensionContext): void {
     neighbour: (from) => focusNeighbour(from),
     run: (action, repoPath, ids) =>
       runWithProgress(progressFor(LOG_COMMAND[action]), () => runLog(action, repoPath, ids)),
+    openCompareList: (repoPath, plan) =>
+      openCompareDoc(repoPath, plan.range, plan.diffLeft, plan.diffRight, plan.label),
   });
   context.subscriptions.push(logWebview);
 
@@ -259,6 +274,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   /** The name a sub-screen's tab shows: the commit, the conflict, the file of a history. */
   const docTitleOf = (uri: vscode.Uri): string => {
+    const compare = compareDoc.stateFor(uri);
+    if (compare) {
+      return compare.label;
+    }
     const parts = decodeURIComponent(uri.path).split('/').filter((part) => part.length > 0);
     return parts[parts.length - 1] ?? t('app.name');
   };
@@ -285,6 +304,10 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     if (stashDoc.stateFor(uri)) {
       await stashDoc.reload(uri);
+      return;
+    }
+    if (compareDoc.stateFor(uri)) {
+      await compareDoc.reload(uri);
       return;
     }
     const conflict = conflictDoc.stateFor(uri);
@@ -315,7 +338,7 @@ export function activate(context: vscode.ExtensionContext): void {
     reload: (uri) => reloadDoc(uri),
     titleOf: (uri) => docTitleOf(uri),
     groupsOf: (uri) => {
-      const list = commitDoc.fileListOf(uri) ?? stashDoc.fileListOf(uri);
+      const list = commitDoc.fileListOf(uri) ?? stashDoc.fileListOf(uri) ?? compareDoc.fileListOf(uri);
       if (!list) {
         return undefined;
       }
@@ -406,20 +429,24 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   /**
-   * A compare ends in a diff, and the diff is the editor's: every file the range touches,
-   * both sides at their own revision, in one multi-diff tab. The panel and the buffer
-   * both come here, so `d` on two commits reads the same in either UI.
+   * A compare ends in a file list, as a commit and a stash do: the range's files are the
+   * screen, and `d` inside it opens one or all of them in the editor. The list is the same
+   * document machinery the other sub-screens use, so a click on `## files` selects the
+   * whole list and the notice for an empty range is the compare's own.
    */
-  const openCompareInEditor = async (
+  const openCompareDoc = async (
     repoPath: string,
     range: string,
     leftRef: string,
     rightRef: string,
     label: string
   ): Promise<void> => {
-    if (!(await openRangeDiff(repoPath, range, leftRef, rightRef, label))) {
+    const uri = await compareDoc.prepare(repoPath, range, leftRef, rightRef, label);
+    if ((compareDoc.fileListOf(uri)?.lines.length ?? 0) === 0) {
       warn(t('compare.noChanges', { range: label }));
+      return;
     }
+    await openDoc('compare', uri, repoPath, async () => undefined);
   };
   const openStashFiles = async (repoPath: string, ref: string): Promise<void> => {
     await openStashDoc(repoPath, ref);
@@ -467,10 +494,22 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    // A stash's file list: `d` is the change of every selected file, the stash against its parent.
+    // A stash's file list: `d` is the change of every selected file, the stash against its parent;
+    // `t` opens those files as they were inside the stash.
     if (stashDoc.stateFor(uri)) {
       if (action === 'fileDiff') {
         await openStashFileDiffs(uri, rows);
+      } else if (action === 'filesAtRef') {
+        await openStashFilesAtRef(uri, rows);
+      }
+      return;
+    }
+
+    // A compare's file list: `d` is the diff of the selected files, the range's two
+    // sides at their own revisions; the same `filesAtRef` action opens files at a commit.
+    if (compareDoc.stateFor(uri)) {
+      if (action === 'fileDiff') {
+        await openCompareFileDiffs(uri, rows);
       }
       return;
     }
@@ -761,6 +800,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     if (uri.path.startsWith('/stashfiles/')) {
       return 'stashfiles';
+    }
+    if (uri.path.startsWith('/compare/')) {
+      return 'compare';
     }
     if (uri.path.startsWith('/conflict/')) {
       return 'conflict';
@@ -1515,7 +1557,7 @@ export function activate(context: vscode.ExtensionContext): void {
   ): Promise<void> => {
     const plan = await planCompare(repo, choice, sides.a, sides.b, sides.aLabel, sides.bLabel);
     if (choiceShowsDiff(choice)) {
-      await openCompareInEditor(repo, plan.range, plan.diffLeft, plan.diffRight, plan.label);
+      await openCompareDoc(repo, plan.range, plan.diffLeft, plan.diffRight, plan.label);
       return;
     }
     notify(t('compare.noChanges', { range: plan.label }));
@@ -2607,10 +2649,64 @@ export function activate(context: vscode.ExtensionContext): void {
     await openRevisionDiffs(state.repoPath, files, `${state.ref}^`, state.ref, state.ref);
   };
 
+  /**
+   * `d` on a compare's file list: one selected file or the whole header, as the two
+   * revisions the compare named them. The plan already resolved `...` to its merge base
+   * for `diffLeft`, so the document and this opener cannot disagree about the sides.
+   */
+  const openCompareFileDiffs = async (uri: vscode.Uri, rows: readonly number[]): Promise<void> => {
+    const state = compareDoc.stateFor(uri);
+    const files = filesOf(compareDoc.fileListOf(uri), rows);
+    if (!state || files.length === 0) {
+      notify(t('msg.cursorNotFile'));
+      return;
+    }
+    await openRevisionDiffs(state.repoPath, files, state.leftRef, state.rightRef, state.label);
+  };
+
   register('githelm.stash.fileDiff', async () => {
     const editor = vscode.window.activeTextEditor;
     if (editor) {
       await openStashFileDiffs(editor.document.uri, selectedLines(editor));
+    }
+  });
+
+  /**
+   * `t` on a stash's file list: the files as they were inside the stash. A tracked file
+   * lives in the stash commit, a file stashed with `-u` in its third parent, and a file
+   * the stash deleted in neither — the same read-only `git:` tabs the commit screen opens,
+   * grouped by the revision each file actually lives under.
+   */
+  const openStashFilesAtRef = async (uri: vscode.Uri, rows: readonly number[]): Promise<void> => {
+    const state = stashDoc.stateFor(uri);
+    const files = filesOf(stashDoc.fileListOf(uri), rows);
+    if (!state || files.length === 0) {
+      notify(t('msg.cursorNotFile'));
+      return;
+    }
+    const refs = await stashRefsForFiles(state.repoPath, state.ref, files);
+    const byRef = new Map<string, string[]>();
+    const missing: string[] = [];
+    for (const file of files) {
+      const revision = refs.get(file);
+      if (!revision) {
+        missing.push(file);
+        continue;
+      }
+      byRef.set(revision, [...(byRef.get(revision) ?? []), file]);
+    }
+    for (const [revision, list] of byRef) {
+      await openFilesAtRef(state.repoPath, list, revision);
+    }
+    if (missing.length > 0) {
+      notify(t('msg.stashNoFile', { count: missing.length }));
+    }
+  };
+
+  register('githelm.stash.filesAtRef', async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+      await openStashFilesAtRef(editor.document.uri, selectedLines(editor));
     }
   });
 

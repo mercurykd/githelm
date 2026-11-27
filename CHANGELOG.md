@@ -7,6 +7,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.0.9] — 2026-11-28
+
+### Added
+
+- A stash's file list has the commit screen's `t`: the selected files open as read-only tabs, as they were inside the stash. `stashRefsForFiles()` reads the stash tree and its third parent once and groups the selection by the revision each file actually lives under — a tracked file comes from `stash@{n}`, a file stashed with `-u` from `stash@{n}^3`, and a file the stash deleted from neither, so it is left out and the notice says how many. The panel sends the same `filesAtRef` action the commit list sends, the hidden command is `githelm.stash.filesAtRef`, and the hint line is `d diff   t file at stash   T tags   q close`.
+
+- A compare's `diff …` answer now opens a file list instead of a multi-diff tab, the same document shape a commit or a stash opens. `CompareDoc` renders the range's `## files (n)` with the status letter and path from `compareChanges()`, keeps the plan's `diffLeft`/`diffRight`/label in the document state, and the panel's `d` opens a row's diff or the whole header through `openRevisionDiffs()` — so the reader sees what the range touches before choosing a file, and a large range no longer opens a tab storm. The list is a `compare` sub-screen with `d`, `r` and `q`, its header selects the whole list, and both the history and branches compare paths (`openCompareList`) open it. The empty-range notice is still `compare.noChanges`.
+
 ## [0.0.8] — 2026-11-24
 
 ### Added

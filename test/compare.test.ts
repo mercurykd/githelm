@@ -5,6 +5,7 @@ import {
   choiceShowsDiff,
   choiceSwaps,
   compareChoices,
+  compareChanges,
   compareFiles,
   compareRange,
   headSha,
@@ -119,6 +120,23 @@ describe('compareFiles', () => {
     const head = await headSha(repo.dir);
     const parent = repo.git('rev-parse', 'HEAD~1').trim();
     assert.deepEqual(await compareFiles(repo.dir, compareRange(parent, head, 'two')), ['a b.txt']);
+  });
+});
+
+describe('compareChanges', () => {
+  it('carries the status letter and the new path a rename lands on', async () => {
+    repo = createTempRepo({ commits: [{ 'a.txt': 'one\n' }, { 'a.txt': 'two\n', 'b.txt': 'new\n' }] });
+    const head = await headSha(repo.dir);
+    const parent = repo.git('rev-parse', 'HEAD~1').trim();
+    const changes = await compareChanges(repo.dir, compareRange(parent, head, 'two'));
+    assert.deepEqual(
+      changes.map((change) => [change.status, change.path]).sort(),
+      [
+        ['A', 'b.txt'],
+        ['M', 'a.txt'],
+      ]
+    );
+    assert.deepEqual(await compareChanges(repo.dir, compareRange(head, head, 'two')), []);
   });
 });
 

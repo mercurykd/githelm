@@ -2,7 +2,7 @@
   "name": "githelm",
   "displayName": "Git Helm",
   "description": "Keyboard-driven git client for VS Code: status buffer, log graph, staging, diffs, stash, rebase and worktrees — GitSavvy-style, one screen per task.",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "mercurykd",
   "license": "MIT",
   "repository": {
@@ -335,6 +335,10 @@
         "title": "Git Helm: Diff File in Stash"
       },
       {
+        "command": "githelm.stash.filesAtRef",
+        "title": "Git Helm: Open Files at Stash"
+      },
+      {
         "command": "githelm.commit.fileDiff",
         "title": "Git Helm: Diff File in Commit"
       },
@@ -423,6 +427,10 @@
         },
         {
           "command": "githelm.stash.fileDiff",
+          "when": "false"
+        },
+        {
+          "command": "githelm.stash.filesAtRef",
           "when": "false"
         },
         {

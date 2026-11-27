@@ -202,6 +202,22 @@ describe('webview keymap', () => {
     assert.deepEqual(Object.keys(DOC_KEYS.init).sort(), ['Enter', 'KeyQ', 'KeyR']);
   });
 
+  it('gives a stash file list the commit screen’s file-at-revision key', () => {
+    assert.equal(resolveDocKey('stash', { code: 'KeyT' }), 'filesAtRef');
+    assert.ok(DOC_NEEDS_LINE.stash.includes('filesAtRef'), 'the key needs a file under it');
+    assert.equal(resolveDocKey('stash', { code: 'KeyD' }), 'fileDiff', 'its own diff is still there');
+    assert.equal(resolveDocKey('stash', { code: 'KeyR' }), 'refresh');
+    assert.equal(resolveDocKey('stash', { code: 'KeyQ' }), 'close');
+  });
+
+  it('gives a compare file list the diff key of the commit and stash lists', () => {
+    assert.equal(resolveDocKey('compare', { code: 'KeyD' }), 'fileDiff');
+    assert.ok(DOC_NEEDS_LINE.compare.includes('fileDiff'), 'the key needs a file under it');
+    assert.equal(resolveDocKey('compare', { code: 'KeyR' }), 'refresh');
+    assert.equal(resolveDocKey('compare', { code: 'KeyQ' }), 'close');
+    assert.equal(resolveDocKey('compare', { code: 'KeyT' }), undefined, 'a compare has no revision of its own');
+  });
+
   it('reads the numeric keypad as the keys above it', () => {
     // The DOM names the keypad's Enter `NumpadEnter`. VS Code folds it into `enter` for
     // the buffers; the panel used to match the DOM name alone, so the keypad's Enter was

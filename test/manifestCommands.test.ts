@@ -60,6 +60,15 @@ describe('manifest and command handlers', () => {
     assert.match(source, /await openFilesAtRef\(state\.repoPath, files, state\.sha\)/);
   });
 
+  it('opens a stash’s files as they were at that stash with t', () => {
+    // A tracked file is in the stash commit, an untracked file stashed with `-u` in the
+    // third parent, and a deleted one nowhere; the key opens what exists and says so.
+    assert.ok(registered.has('githelm.stash.filesAtRef'));
+    assert.match(source, /openStashFilesAtRef/);
+    assert.match(source, /stashRefsForFiles\(state\.repoPath, state\.ref, files\)/);
+    assert.match(source, /await openFilesAtRef\(state\.repoPath, list, revision\)/);
+  });
+
   it('keeps the whole UI in panels: no key is bound to a text screen', () => {
     // The keys of a screen live inside its webview, so the manifest carries only the
     // three keys that mean something outside one: the way in and the two diff arrows.

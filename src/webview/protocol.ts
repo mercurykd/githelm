@@ -274,7 +274,7 @@ export interface LogModel {
  * metadata and files, a stash's files, a conflict, a file's history. The panel draws the document's lines the
  * way the text buffer draws them, spans and all, so the two screens read the same.
  */
-export type DocKind = 'commit' | 'stash' | 'conflict' | 'file' | 'init';
+export type DocKind = 'commit' | 'stash' | 'compare' | 'conflict' | 'file' | 'init';
 
 /** One painted piece of a document line. Segments concatenate to the line's text. */
 export interface DocSegmentModel {

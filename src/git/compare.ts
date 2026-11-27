@@ -112,6 +112,34 @@ export async function compareDiff(repoPath: string, a: string, b: string, mode: 
 }
 
 /**
+ * The files that differ across the range, with the status letter `git diff --name-status`
+ * prints. A rename is listed under its new path, which is the file the diff editor shows.
+ */
+export interface CompareChange {
+  status: string;
+  path: string;
+}
+
+export async function compareChanges(repoPath: string, range: string): Promise<CompareChange[]> {
+  const result = await git(repoPath, ['diff', '--no-color', '--name-status', '-M', '--no-ext-diff', range]);
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || `git diff --name-status ${range} failed (${result.code})`);
+  }
+  const changes: CompareChange[] = [];
+  for (const line of result.stdout.split('\n')) {
+    if (line.length === 0) {
+      continue;
+    }
+    const [status = '', firstPath = '', secondPath = ''] = line.split('\t');
+    if (firstPath.length === 0) {
+      continue;
+    }
+    changes.push({ status: status.slice(0, 1), path: (secondPath || firstPath).trim() });
+  }
+  return changes;
+}
+
+/**
  * The repository-relative paths whose content differs across the range — what a
  * side-by-side diff of two commits needs to know before it can open. `-z` keeps a path
  * with a space or a quote in it one entry, and renames are listed under their new name,
