@@ -70,6 +70,7 @@ import {
   DocWebview,
   ListWebview,
   LogWebview,
+  RemoteTagStatus,
   ScreenPanel,
   StatusWebview,
   openFileDiffs,
@@ -132,6 +133,9 @@ export function activate(context: vscode.ExtensionContext): void {
   // remembered by its label, because VS Code reports no input for it at this API version.
   const diffWalk = createDiffWalk({ notice: refuse });
 
+  /** One remote-tag answer for the status, tags and history screens. */
+  const remoteTags = new RemoteTagStatus();
+
   // The webview status screen. The text buffers stay as they are, so the old screen
   // keeps working while the new one grows screen by screen.
   const statusWebview = new StatusWebview({
@@ -167,7 +171,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // `Tab` walks the screens; `q` hands the keyboard to another screen that is open.
     cycle: (from, direction, repoPath) => cycleScreens(from, direction, repoPath),
     neighbour: (from) => focusNeighbour(from),
-  });
+  }, remoteTags);
   context.subscriptions.push(statusWebview);
 
   /**
@@ -231,7 +235,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   const branchesWebview = new ListWebview(listDeps('branches'), 'branches');
-  const tagsWebview = new ListWebview(listDeps('tags'), 'tags');
+  const tagsWebview = new ListWebview(listDeps('tags'), 'tags', remoteTags);
   const submodulesWebview = new ListWebview(listDeps('submodules'), 'submodules');
   const actionLogWebview = new ActionLogWebview({
     extensionUri: context.extensionUri,
@@ -260,7 +264,7 @@ export function activate(context: vscode.ExtensionContext): void {
       runWithProgress(progressFor(LOG_COMMAND[action]), () => runLog(action, repoPath, ids)),
     openCompareList: (repoPath, plan) =>
       openCompareDoc(repoPath, plan.range, plan.diffLeft, plan.diffRight, plan.label),
-  });
+  }, remoteTags);
   context.subscriptions.push(logWebview);
 
   /** Every panel, in the order the status bar and `resolveRepo()` follow them. */
@@ -701,6 +705,8 @@ export function activate(context: vscode.ExtensionContext): void {
     'githelm.tags.create': { spin: t('progress.tags'), done: t('msg.updated') },
     'githelm.tags.move': { spin: t('progress.tags'), done: t('msg.updated') },
     'githelm.tags.delete': { spin: t('progress.tags'), done: t('msg.deleted') },
+    'githelm.tags.push': { spin: t('progress.push'), done: t('msg.pushed') },
+    'githelm.tags.deleteRemote': { spin: t('progress.push'), done: t('msg.deleted') },
     'githelm.submodules.update': { spin: t('progress.submoduleUpdate'), done: t('msg.updated') },
     'githelm.submodules.updateRemote': { spin: t('progress.submoduleUpdate'), done: t('msg.updated') },
     'githelm.forge.pulls': { spin: t('progress.forge') },

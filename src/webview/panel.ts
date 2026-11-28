@@ -13,6 +13,7 @@ import { readSubmoduleStatus } from '../git/submodules';
 import { stageAll, stageFiles, unstageAll, unstageFiles } from '../git/stage';
 import { readStatus } from '../git/status';
 import { listTags } from '../git/tags';
+import { remoteTagNames } from '../git/tags';
 import { listWorktrees } from '../git/worktree';
 import { t } from '../i18n';
 import type { MessageKey } from '../i18n';
@@ -682,7 +683,10 @@ export abstract class ScreenPanel implements vscode.Disposable {
 
 /** The status screen as a panel: the file sections, the right-hand column, the commits. */
 export class StatusWebview extends ScreenPanel {
-  constructor(private readonly statusDeps: StatusWebviewDeps) {
+  constructor(
+    private readonly statusDeps: StatusWebviewDeps,
+    private readonly remoteTags: RemoteTagStatus = new RemoteTagStatus()
+  ) {
     super(statusDeps);
   }
 
@@ -709,6 +713,11 @@ export class StatusWebview extends ScreenPanel {
     ]);
     // The header names the repository itself, so the model needs no `remote` of its own:
     // the remotes are the column's rows.
+    const remote = remotes.find((entry) => entry.name === 'origin')?.name ?? remotes[0]?.name;
+    const tagState = remote ? this.remoteTags.read(repoPath, remote) : undefined;
+    if (remote && tagState?.stale) {
+      this.remoteTags.refresh(repoPath, remote, () => void this.refresh());
+    }
     return buildStatusModel({
       repoPath,
       status,
@@ -717,6 +726,7 @@ export class StatusWebview extends ScreenPanel {
       worktrees,
       commits: history.commits,
       branches,
+      ...(tagState?.names ? { pushedTags: tagState.names } : {}),
       ...(upstream ? { upstream } : {}),
     });
   }
@@ -931,6 +941,63 @@ export class StatusWebview extends ScreenPanel {
 
 }
 
+/** How long a remote-tag answer is reused before the tags/graph screens ask again. */
+const TAG_REMOTE_TTL = 30_000;
+
+/** The remote answer a screen can use immediately, and whether it is already old. */
+export interface RemoteTagRead {
+  names?: Set<string>;
+  stale: boolean;
+}
+
+/**
+ * The one remote-tag check shared by the tags screen and the history graph. Reading is
+ * synchronous and never touches the network: a screen paints from the last answer (or
+ * without marks) and asks `refresh()` to update the cache behind the rows. `names`
+ * stays `undefined` when the remote cannot be reached, which is not "no tags".
+ */
+export class RemoteTagStatus {
+  private readonly cache = new Map<string, { names?: Set<string>; at: number }>();
+  private readonly pending = new Map<string, Set<() => void>>();
+
+  read(repoPath: string, remote: string): RemoteTagRead {
+    const cached = this.cache.get(`${repoPath}\0${remote}`);
+    return { names: cached?.names, stale: !cached || Date.now() - cached.at > TAG_REMOTE_TTL };
+  }
+
+  refresh(repoPath: string, remote: string, done: () => void): void {
+    const key = `${repoPath}\0${remote}`;
+    const waiting = this.pending.get(key);
+    if (waiting) {
+      waiting.add(done);
+      return;
+    }
+    this.pending.set(key, new Set([done]));
+    void remoteTagNames(repoPath, remote)
+      .then((names) => {
+        this.cache.set(key, { names, at: Date.now() });
+      })
+      .catch(() => {
+        this.cache.set(key, { names: undefined, at: Date.now() });
+      })
+      .finally(() => {
+        const callbacks = this.pending.get(key);
+        this.pending.delete(key);
+        for (const callback of callbacks ?? []) {
+          callback();
+        }
+      });
+  }
+
+  forget(repoPath: string): void {
+    for (const key of [...this.cache.keys()]) {
+      if (key.startsWith(`${repoPath}\0`)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+}
+
 /**
  * A screen that is a list of things — branches, tags — as a panel. The screen itself
  * is a model built from the same git data the text buffer renders, so both UIs say the
@@ -943,7 +1010,8 @@ export class ListWebview extends ScreenPanel {
 
   constructor(
     private readonly listDeps: ListWebviewDeps,
-    private readonly list: 'branches' | 'tags' | 'submodules'
+    private readonly list: 'branches' | 'tags' | 'submodules',
+    private readonly remoteTags: RemoteTagStatus = new RemoteTagStatus()
   ) {
     super(listDeps);
   }
@@ -958,7 +1026,24 @@ export class ListWebview extends ScreenPanel {
 
   protected async buildModel(repoPath: string): Promise<ScreenModel> {
     if (this.list === 'tags') {
-      return buildTagsModel(repoPath, await listTags(repoPath));
+      // A tag row is highlighted when the default remote does not have it: `origin`
+      // when it exists, otherwise the first configured remote. The local rows paint
+      // first; a cached remote answer is applied now and a stale one is refreshed after.
+      const remotes = await listRemotes(repoPath);
+      const remote = remotes.find((entry) => entry.name === 'origin')?.name ?? remotes[0]?.name;
+      const tags = await listTags(repoPath);
+      if (remote) {
+        const state = this.remoteTags.read(repoPath, remote);
+        if (state.names) {
+          for (const tag of tags) {
+            tag.pushed = state.names.has(tag.name);
+          }
+        }
+        if (state.stale) {
+          this.remoteTags.refresh(repoPath, remote, () => void this.refresh());
+        }
+      }
+      return buildTagsModel(repoPath, tags, remote);
     }
     if (this.list === 'submodules') {
       const { submodules, error } = await readSubmoduleStatus(repoPath);
@@ -997,6 +1082,9 @@ export class ListWebview extends ScreenPanel {
         await this.listDeps.openLogBranch(repoPath, name);
       }
       return;
+    }
+    if (this.list === 'tags' && (action === 'push' || action === 'removeRemote')) {
+      this.remoteTags.forget(repoPath);
     }
     await this.listDeps.run(action, repoPath, ids);
   }
@@ -1065,7 +1153,10 @@ export class LogWebview extends ScreenPanel {
   /** How much history has been read so far: a scroll to the end raises it by a page. */
   private limit = LOG_PAGE;
 
-  constructor(private readonly logDeps: LogWebviewDeps) {
+  constructor(
+    private readonly logDeps: LogWebviewDeps,
+    private readonly remoteTags: RemoteTagStatus = new RemoteTagStatus()
+  ) {
     super(logDeps);
   }
 
@@ -1131,6 +1222,12 @@ export class LogWebview extends ScreenPanel {
     // The same two settings the buffer reads, so a custom date column or `--all`'s
     // custom refs read alike in both UIs.
     const configuration = vscode.workspace.getConfiguration('githelm');
+    const remotes = await listRemotes(repoPath);
+    const remote = remotes.find((entry) => entry.name === 'origin')?.name ?? remotes[0]?.name;
+    const tagState = remote ? this.remoteTags.read(repoPath, remote) : undefined;
+    if (remote && tagState?.stale) {
+      this.remoteTags.refresh(repoPath, remote, () => void this.refresh());
+    }
     const parsed = await readLog(repoPath, {
       ...(this.range ? { range: this.range } : { all: this.all }),
       ...(this.leftRight ? { leftRight: true } : {}),
@@ -1149,6 +1246,7 @@ export class LogWebview extends ScreenPanel {
       range: this.range,
       leftRight: this.leftRight,
       limit: this.limit,
+      ...(tagState?.names ? { pushedTags: tagState.names } : {}),
     });
   }
 

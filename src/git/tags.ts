@@ -12,6 +12,11 @@ export interface TagEntry {
    * tag, which has no message of its own.
    */
   annotation?: string;
+  /**
+   * Whether the tag exists on the remote it was checked against. Absent when the
+   * list was read without a remote, or when the remote could not be reached.
+   */
+  pushed?: boolean;
 }
 
 interface TagRef {
@@ -90,7 +95,7 @@ export async function listTags(repoPath: string): Promise<TagEntry[]> {
     }
   }
 
-  return listed.map((tag) => {
+  const tags: TagEntry[] = listed.map((tag) => {
     const commit = commits.get(tag.commit);
     return {
       name: tag.name,
@@ -101,6 +106,30 @@ export async function listTags(repoPath: string): Promise<TagEntry[]> {
       ...(tag.annotation ? { annotation: tag.annotation } : {}),
     };
   });
+
+  return tags;
+}
+
+/**
+ * The tag names that exist on a remote. This is the one network call the tags screen
+ * needs, and it is kept separate from `listTags()` so the screen can paint the local
+ * rows first and mark the missing ones when the answer arrives. `undefined` means the
+ * remote could not be reached, which is different from "it has no tags".
+ */
+export async function remoteTagNames(repoPath: string, remote: string): Promise<Set<string> | undefined> {
+  const result = await git(repoPath, ['ls-remote', '--tags', remote]);
+  if (result.code !== 0) {
+    return undefined;
+  }
+  const names = new Set<string>();
+  for (const line of result.stdout.split('\n')) {
+    const ref = line.trim().split(/\s+/)[1];
+    if (!ref?.startsWith('refs/tags/')) {
+      continue;
+    }
+    names.add(ref.slice('refs/tags/'.length).replace(/\^\{\}$/, ''));
+  }
+  return names;
 }
 
 /**

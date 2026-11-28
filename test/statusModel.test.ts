@@ -209,6 +209,29 @@ describe('status model', () => {
     assert.equal(block.rows[1].refs, '', 'a commit with no ref prints no brackets');
   });
 
+  it('marks an unpushed tag in the last-commits refs, leaving the text unchanged', () => {
+    const block = buildStatusModel({
+      ...input,
+      commits: [
+        {
+          sha: '9a7e4eb0000000000000000000000000000000000',
+          shortSha: '9a7e4eb',
+          date: '2026-11-13 16:07',
+          author: 'mercury',
+          subject: 'release',
+          refs: ['HEAD -> main', 'tag: v0.0.4', 'tag: local'],
+        },
+      ],
+      pushedTags: new Set(['v0.0.4']),
+    }).commits;
+    assert.equal(block.rows[0].refs, '[HEAD -> main tag: v0.0.4 tag: local]');
+    assert.deepEqual(block.rows[0].refsSegments, [
+      { text: '[HEAD -> main tag: v0.0.4 ', role: 'refs' },
+      { text: 'tag: local', role: 'untracked' },
+      { text: ']', role: 'refs' },
+    ]);
+  });
+
   it('turns rows into the file targets the discard planner expects', () => {
     const model = buildStatusModel(input);
     const targets = fileTargetsOf(model, ['unstaged:src/util.ts', 'staged:src/app.ts']);

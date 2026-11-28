@@ -97,6 +97,7 @@ export const en = {
 
   'tags.title': '{repo} — tags',
   'tags.section': 'tags',
+  'tags.unpushed': '{count} not pushed to {remote}',
   'tags.keys': 'enter show commit   t create   e move to HEAD   x delete   D delete remote   U push   g graph   T tags   r refresh   q close',
 
   'log.title': '{repo} — commit history',

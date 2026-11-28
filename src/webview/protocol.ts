@@ -104,6 +104,8 @@ export interface CommitRowModel {
   author: string;
   /** The refs pointing at the commit, as `[HEAD -> main tag: v0.0.4]`; empty when none. */
   refs: string;
+  /** Painted pieces of `refs`: an unpushed tag is coral, the rest keeps the refs colour. */
+  refsSegments?: { text: string; role: ColorRole }[];
   subject: string;
 }
 

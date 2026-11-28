@@ -9,7 +9,7 @@ import type { TagEntry } from '../src/git/tags';
 import { t } from '../src/i18n';
 import { FILTER_FIELDS, fieldLabel } from '../src/views/logFilters';
 import { buildBranchesModel } from '../src/webview/model/branches';
-import { buildLogModel, segmentsOf } from '../src/webview/model/log';
+import { buildLogModel, highlightUnpushedTags, segmentsOf } from '../src/webview/model/log';
 import { buildTagsModel } from '../src/webview/model/tags';
 import { CAROUSEL, nextScreen } from '../src/webview/carousel';
 import { resolveCommonKey, resolveScreenKey, SCREEN_KEYS, SCREEN_NEEDS_ROW } from '../src/webview/keys';
@@ -187,6 +187,21 @@ describe('tags screen as a panel', () => {
     const model = buildTagsModel('/repo', [tag('v1.0.0')]);
     assert.equal(model.blocks[0].rows[0].id, 'tag:v1.0.0');
   });
+
+  it('marks a tag the remote does not have, and says which remote', () => {
+    const model = buildTagsModel(
+      '/repo',
+      [tag('pushed', { pushed: true }), tag('local', { pushed: false })],
+      'origin'
+    );
+    assert.equal(model.blocks[0].rows[0].role, 'branch', 'a pushed tag keeps the branch colour');
+    assert.equal(model.blocks[0].rows[1].role, 'untracked', 'a missing tag takes the coral of "untracked"');
+    assert.deepEqual(
+      model.facts.map((fact) => fact.value),
+      [t('tags.unpushed', { count: 1, remote: 'origin' })],
+      'the line names the count and the remote it was checked against'
+    );
+  });
 });
 
 describe('the history screen as a panel', () => {
@@ -229,6 +244,28 @@ describe('the history screen as a panel', () => {
       segments.map((segment) => segment.text).join(''),
       text,
       'nothing is lost and nothing is drawn twice'
+    );
+  });
+
+  it('marks a tag the remote does not have inside the refs label', () => {
+    const segments = highlightUnpushedTags(
+      [{ text: '[HEAD -> main tag: v1 tag: v2]', role: 'refs' }],
+      new Set(['v1'])
+    );
+    assert.deepEqual(segments, [
+      { text: '[HEAD -> main tag: v1 ', role: 'refs' },
+      { text: 'tag: v2', role: 'untracked' },
+      { text: ']', role: 'refs' },
+    ]);
+    assert.equal(
+      segments.map((segment) => segment.text).join(''),
+      '[HEAD -> main tag: v1 tag: v2]',
+      'the row text is unchanged'
+    );
+    assert.deepEqual(
+      highlightUnpushedTags([{ text: '[tag: v1]', role: 'refs' }], new Set(['v1'])),
+      [{ text: '[tag: v1]', role: 'refs' }],
+      'a pushed tag keeps the refs colour'
     );
   });
 
@@ -641,7 +678,7 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
 
   it('keeps one panel per screen, so the screens are tabs', () => {
     assert.match(SOURCE, /new ListWebview\(listDeps\('branches'\), 'branches'\)/);
-    assert.match(SOURCE, /new ListWebview\(listDeps\('tags'\), 'tags'\)/);
+    assert.match(SOURCE, /new ListWebview\(listDeps\('tags'\), 'tags', remoteTags\)/);
     assert.match(SOURCE, /new ListWebview\(listDeps\('submodules'\), 'submodules'\)/);
     assert.match(SOURCE, /new ActionLogWebview\(/);
     assert.match(SOURCE, /new LogWebview\(/);
@@ -881,7 +918,9 @@ const BUFFER = fs.readFileSync(path.join('src', 'views', 'historyDoc.ts'), 'utf8
     assert.ok(!/overflow: hidden/.test(refsBody), 'and never clipped');
     assert.match(refsBody, /margin-right: 1ch;/, 'a word space before the subject, as the buffer prints it');
     assert.ok(!/\.commit-subject \{/.test(STYLE), 'the subject needs no box of its own any more');
-    assert.match(CLIENT, /message\.append\(element\('span', 'commit-refs role-refs', commit\.refs\)\)/, 'the refs come first in that flow');
+    assert.match(CLIENT, /const refs = element\('span', 'commit-refs'\)/, 'the refs come first in that flow');
+    assert.match(CLIENT, /refs\.append\(element\('span', `role-\$\{segment\.role\}`, segment\.text\)\)/, 'painted piece by piece');
+    assert.match(CLIENT, /message\.append\(refs\)/);
     assert.match(CLIENT, /message\.append\(element\('span', 'commit-subject', commit\.subject\)\)/, 'then the subject, in the same element');
   });
 

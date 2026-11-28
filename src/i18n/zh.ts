@@ -93,6 +93,7 @@ export const zh: Record<MessageKey, string> = {
 
   'tags.title': '{repo} — 标签',
   'tags.section': '标签',
+  'tags.unpushed': '{count} 个未推送到 {remote}',
   'tags.keys': 'enter 查看提交   t 创建   e 移到 HEAD   x 删除   D 删除远程   U 推送   g 图形   T 标签页   r 刷新   q 关闭',
 
   'log.title': '{repo} — 提交历史',

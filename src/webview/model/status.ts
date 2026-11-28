@@ -21,6 +21,7 @@ import {
 } from '../protocol';
 import { branchRowOf } from './branches';
 import { parseHints } from './hints';
+import { refSegments } from './refs';
 
 /** Conflicts first, then the three sections that are always on screen. */
 const SECTION_ORDER: SectionKind[] = ['conflict', 'staged', 'unstaged', 'untracked'];
@@ -35,6 +36,8 @@ export interface StatusModelInput {
   commits: { sha?: string; shortSha: string; date: string; author: string; subject: string; refs?: string[] }[];
   /** Local branches, as the `branches` screen prints them. */
   branches?: BranchEntry[];
+  /** Tag names the default remote has; absent means the remote is unknown. */
+  pushedTags?: ReadonlySet<string>;
   upstream?: UpstreamInfo;
 }
 
@@ -203,18 +206,23 @@ function column(input: StatusModelInput): ColumnBlockModel[] {
 }
 
 function commits(input: StatusModelInput): CommitsBlockModel {
-  const rows: CommitRowModel[] = input.commits.map((commit) => ({
-    // The full sha when the host has it: a key on the row asks `commitBySha()` for the
-    // commit again, and a short one is only a display form of the name.
-    id: `commit:${commit.sha ?? commit.shortSha}`,
-    sha: commit.shortSha,
-    date: commit.date,
-    author: commit.author,
-    // The tags and branches pointing at the commit belong on its row: `v0.0.4` on the
-    // head commit is how a reader tells a release from a plain commit.
-    refs: refsLabel(commit.refs ?? []),
-    subject: commit.subject,
-  }));
+  const rows: CommitRowModel[] = input.commits.map((commit) => {
+    const refs = refsLabel(commit.refs ?? []);
+    return {
+      // The full sha when the host has it: a key on the row asks `commitBySha()` for the
+      // commit again, and a short one is only a display form of the name.
+      id: `commit:${commit.sha ?? commit.shortSha}`,
+      sha: commit.shortSha,
+      date: commit.date,
+      author: commit.author,
+      // The tags and branches pointing at the commit belong on its row: `v0.0.4` on the
+      // head commit is how a reader tells a release from a plain commit. An unpushed tag
+      // is coral, the same colour the tags screen and the graph give it.
+      refs,
+      ...(input.pushedTags ? { refsSegments: refSegments(refs, input.pushedTags) } : {}),
+      subject: commit.subject,
+    };
+  });
   return {
     title: t('status.section.commits'),
     hints: parseHints(t('hints.commits')),

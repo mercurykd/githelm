@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, it } from 'node:test';
-import { parseRemoteTag, tagDeleteRemoteArgs, tagPushArgs } from '../src/git/tags';
+import { listTags, parseRemoteTag, remoteTagNames, tagDeleteRemoteArgs, tagPushArgs } from '../src/git/tags';
+import { createTempRepo } from './helpers/tempRepo';
 
 describe('tagPushArgs', () => {
   it('pushes the tag by its full ref, so a branch of the same name is not touched', () => {
@@ -63,5 +67,29 @@ describe('parseRemoteTag', () => {
   it('ignores anything that is not a sha, so a warning on stdout cannot be mistaken for a tag', () => {
     const output = ['warning: redirecting to https://example.com/repo.git/', 'not-a-sha\trefs/tags/v1.0.0', ''].join('\n');
     assert.equal(parseRemoteTag(output, 'v1.0.0'), undefined);
+  });
+});
+
+describe('listTags against a remote', () => {
+  it('marks only the tags the remote does not have', async () => {
+    const repo = createTempRepo({ commits: [{ 'a.txt': 'one\n' }] });
+    const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'githelm-bare-'));
+    try {
+      repo.git('init', '--bare', bare);
+      repo.git('remote', 'add', 'origin', bare);
+      repo.git('tag', 'pushed');
+      repo.git('tag', 'local');
+      repo.git('push', 'origin', 'refs/tags/pushed');
+
+      const tags = await listTags(repo.dir);
+      assert.deepEqual(tags.map((tag) => tag.name).sort(), ['local', 'pushed']);
+      const names = await remoteTagNames(repo.dir, 'origin');
+      assert.ok(names?.has('pushed'), 'the pushed tag is on the remote');
+      assert.equal(names?.has('local'), false, 'a tag missing on the remote is not in the set');
+      assert.equal(await remoteTagNames(repo.dir, 'missing'), undefined, 'an unreachable remote is unknown, not empty');
+    } finally {
+      repo.dispose();
+      fs.rmSync(bare, { recursive: true, force: true });
+    }
   });
 });

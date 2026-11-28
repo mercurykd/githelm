@@ -20,9 +20,13 @@ const GAP = 2;
  * screen, the same `padEnd()` arithmetic `renderTags()` does, so the sha, the date and
  * the author sit under each other exactly as they do in the text buffer.
  */
-export function buildTagsModel(repoPath: string, tags: TagEntry[]): ListModel {
+export function buildTagsModel(repoPath: string, tags: TagEntry[], remote?: string): ListModel {
   // The count the buffer printed under the title is gone: the rows are the count.
-  const facts: FactModel[] = [];
+  const unpushed = tags.filter((tag) => tag.pushed === false).length;
+  const facts: FactModel[] =
+    remote && unpushed > 0
+      ? [{ label: '', value: t('tags.unpushed', { count: unpushed, remote }), role: 'meta' }]
+      : [];
 
   const annotations = tags.map((tag) => (tag.annotation ? truncate(tag.annotation, ANNOTATION_WIDTH) : ''));
   const nameWidth = tags.reduce((width, tag) => Math.max(width, tag.name.length), 0) + GAP;
@@ -47,7 +51,15 @@ export function buildTagsModel(repoPath: string, tags: TagEntry[]): ListModel {
       // The buffer leaves the subject in the editor foreground, so the panel does too.
       { text: tag.subject, role: 'plain' },
     ];
-    return { id: `tag:${tag.name}`, text: tag.name, role: 'branch', parts, aligned: true };
+    return {
+      id: `tag:${tag.name}`,
+      text: tag.name,
+      // A tag missing on the remote is the one row that needs attention: it takes the
+      // coral "untracked" colour instead of the green of a pushed tag.
+      role: tag.pushed === false ? 'untracked' : 'branch',
+      parts,
+      aligned: true,
+    };
   });
 
   return {

@@ -11,6 +11,7 @@ import type {
   LogSegmentModel,
 } from '../protocol';
 import { parseHints } from './hints';
+import { refSegments } from './refs';
 
 export interface LogModelInput {
   repoPath: string;
@@ -22,6 +23,12 @@ export interface LogModelInput {
   leftRight?: boolean;
   /** The `-n` the rows were read with, so the model can say whether more exist. */
   limit: number;
+  /**
+   * The tag names that exist on the remote the screen checked. A tag ref in a row that
+   * is not in this set is painted amber; absent means the remote is unknown, so nothing
+   * is marked.
+   */
+  pushedTags?: ReadonlySet<string>;
 }
 
 /**
@@ -33,7 +40,7 @@ export interface LogModelInput {
  * second graph renderer that could drift from the first.
  */
 export function buildLogModel(input: LogModelInput): LogModel {
-  const { repoPath, parsed, all, filter, sort, range, leftRight, limit } = input;
+  const { repoPath, parsed, all, filter, sort, range, leftRight, limit, pushedTags } = input;
 
   const suffix = range ?? (all ? t('log.titleAll') : '');
   // The header names the screen the way every other screen does — the repository, an
@@ -52,7 +59,9 @@ export function buildLogModel(input: LogModelInput): LogModel {
   const rows: LogRowModel[] = logRows(parsed).map((row, index) => {
     const model: LogRowModel = {
       id: row.commit ? `commit:${row.commit.sha}` : `row:${index}`,
-      segments: segmentsOf(row.text, row.spans),
+      // A tag the default remote does not have is painted amber inside the refs label;
+      // the local graph is on screen already, so the remote check never blocks it.
+      segments: highlightUnpushedTags(segmentsOf(row.text, row.spans), pushedTags),
     };
     if (row.commit) {
       model.commit = { sha: row.commit.sha, shortSha: row.commit.shortSha, refs: row.commit.refs };
@@ -96,6 +105,30 @@ function filterRows(filter: LogFilter): LogFilterRowModel[] {
       filled: value.length > 0,
     };
   });
+}
+
+/**
+ * Splits a refs segment around the tags the remote does not have, so only `tag: v1`
+ * takes the coral `untracked` colour and the rest of the label keeps the refs colour.
+ * Git ref names contain no whitespace, and the label is built by `refsLabel()` as
+ * `[HEAD -> main tag: v1 origin/main]`, which is why the tag is one token.
+ */
+export function highlightUnpushedTags(
+  segments: LogSegmentModel[],
+  pushedTags: ReadonlySet<string> | undefined
+): LogSegmentModel[] {
+  if (!pushedTags) {
+    return segments;
+  }
+  const result: LogSegmentModel[] = [];
+  for (const segment of segments) {
+    if (segment.role !== 'refs') {
+      result.push(segment);
+    } else {
+      result.push(...refSegments(segment.text, pushedTags));
+    }
+  }
+  return result;
 }
 
 /**

@@ -7,6 +7,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.0.10] — 2026-11-28
+
+### Added
+
+- The tags screen marks the tags the default remote does not have. `remoteTagNames()` reads `ls-remote --tags` for that remote, and the tags panel applies the answer behind the already-painted local rows: `TagEntry.pushed` is set from a 30-second cache, and a stale cache is refreshed in the background, so opening the screen no longer waits for the network. A missing tag takes the coral `untracked` colour instead of the green `branch` colour, and `{count} not pushed to {remote}` stands above the list. The remote is `origin` when it exists, otherwise the first configured one; an unreachable remote leaves the marks out rather than calling every tag unpushed. Pushing or deleting a remote tag forgets the cache, so the next paint asks again.
+
+- The history graph and the status screen's `last commits` mark the same unpushed tags in their refs labels. Both read local rows first and consult the shared `RemoteTagStatus` cache — never the network on the paint path — so opening, paging or refreshing them is as fast as before; when the background `ls-remote` answer arrives, only the `tag: <name>` pieces of the affected labels are repainted coral (`untracked`). In `last commits` the refs label is a sequence of painted pieces (`refsSegments`) while the plain `refs` text stays unchanged, so copying and the existing model tests still read the same row. A pushed tag keeps the refs colour, and an unreachable remote marks nothing.
+
+### Fixed
+
+- Pushing or deleting a remote tag from the tags screen now reports in the status bar. `SCREEN_COMMAND.tags` already named `githelm.tags.push` and `githelm.tags.deleteRemote`, but neither id had a `PROGRESS` entry, so the panel ran the key silently while the buffer showed `pushing…`. Both now spin through the same wrapper as the status push and end with `Pushed.` / `Deleted.`
+
 ## [0.0.9] — 2026-11-28
 
 ### Added

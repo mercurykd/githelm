@@ -54,6 +54,11 @@ describe('the panel reports like the buffer', () => {
     }
   });
 
+  it('gives the tags screen push a progress line', () => {
+    assert.ok(progress.includes('githelm.tags.push'), 'the push has a spinner');
+    assert.match(blockOf('const SCREEN_COMMAND: Record<'), /push: 'githelm\.tags\.push'/, 'the key reaches it');
+  });
+
   it('gives the wrapper the spinner, the done line and the error path', () => {
     const body = SOURCE.slice(SOURCE.indexOf('const runWithProgress = async ('), SOURCE.indexOf('const guarded ='));
     assert.ok(body.length > 0, 'the wrapper is found');

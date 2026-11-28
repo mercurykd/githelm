@@ -94,6 +94,7 @@ export const ru: Record<MessageKey, string> = {
 
   'tags.title': '{repo} — теги',
   'tags.section': 'теги',
+  'tags.unpushed': 'Не запушено в {remote}: {count}',
   'tags.keys': 'enter показать коммит   t создать   e переместить на HEAD   x удалить   D удалить на remote   U отправить   g граф   T теги   r обновить   q закрыть',
 
   'log.title': '{repo} — история коммитов',

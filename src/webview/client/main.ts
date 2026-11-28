@@ -336,7 +336,16 @@ function renderCommits(container: HTMLElement, block: CommitsBlockModel, selecte
     // a tag on the head commit is visible without opening the history.
     const message = element('span', 'commit-message');
     if (commit.refs.length > 0) {
-      message.append(element('span', 'commit-refs role-refs', commit.refs));
+      const refs = element('span', 'commit-refs');
+      if (commit.refsSegments && commit.refsSegments.length > 0) {
+        for (const segment of commit.refsSegments) {
+          refs.append(element('span', `role-${segment.role}`, segment.text));
+        }
+      } else {
+        refs.classList.add('role-refs');
+        refs.textContent = commit.refs;
+      }
+      message.append(refs);
     }
     message.append(element('span', 'commit-subject', commit.subject));
     item.append(message);
